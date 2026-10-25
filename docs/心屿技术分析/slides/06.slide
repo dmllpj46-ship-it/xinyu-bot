@@ -1,0 +1,111 @@
+<Slide style={{ width: 1280, height: 720, background: '#FBF7F2', padding: 0, position: 'relative', fontFamily: "'Noto Sans SC', system-ui, sans-serif" }}>
+
+    {/* ── A 区 · 标题块 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 46, flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+        <Box style={{ width: 4, height: 30, background: '#C0765C' }} />
+        <Text style={{ fontSize: 36, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.3 }}>
+            10 篇文档，不值得上向量库
+        </Text>
+    </Box>
+
+    {/* ── 主图 · 覆盖率与门槛 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 128, width: 728 }}>
+
+        <Text style={{ fontSize: 14, letterSpacing: '0.1em', color: '#6E7C8C' }}>查询：量子色动力学的渐近自由</Text>
+        <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.52)', marginTop: 5 }}>纯 BM25 返回的前三段，按「查询词覆盖度」衡量</Text>
+
+        <Box style={{ position: 'relative', height: 404, marginTop: 24 }}>
+
+            {/* 零轴 */}
+            <Box style={{ position: 'absolute', left: 190, top: 8, width: 1, height: 232, background: 'rgba(46,42,39,0.18)' }} />
+
+            {/* 门槛竖线 */}
+            <Box style={{ position: 'absolute', left: 598, top: 0, width: 2, height: 240, background: '#C0765C', opacity: 0.9 }} />
+            <Text style={{ position: 'absolute', left: 610, top: 0, fontSize: 14, color: '#C0765C', lineHeight: 1.4 }}>
+                覆盖度门槛 0.34
+            </Text>
+
+            {/* 第 1 段 */}
+            <Box style={{ position: 'absolute', left: 0, top: 34, width: 728, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ width: 190, fontSize: 17, color: '#2E2A27' }}>行为动力篇</Text>
+                <Box style={{ width: 372, height: 40, background: 'rgba(110,124,140,0.52)' }} />
+                <Box style={{ flex: 1 }} />
+                <Text style={{ width: 70, textAlign: 'right', fontSize: 21, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: 'rgba(46,42,39,0.62)' }}>0.31</Text>
+            </Box>
+
+            {/* 第 2 段 */}
+            <Box style={{ position: 'absolute', left: 0, top: 116, width: 728, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ width: 190, fontSize: 17, color: '#2E2A27' }}>焦虑与惊恐篇</Text>
+                <Box style={{ width: 288, height: 40, background: 'rgba(110,124,140,0.38)' }} />
+                <Box style={{ flex: 1 }} />
+                <Text style={{ width: 70, textAlign: 'right', fontSize: 21, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: 'rgba(46,42,39,0.55)' }}>0.24</Text>
+            </Box>
+
+            {/* 第 3 段 */}
+            <Box style={{ position: 'absolute', left: 0, top: 198, width: 728, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ width: 190, fontSize: 17, color: '#2E2A27' }}>睡眠与节律篇</Text>
+                <Box style={{ width: 216, height: 40, background: 'rgba(110,124,140,0.26)' }} />
+                <Box style={{ flex: 1 }} />
+                <Text style={{ width: 70, textAlign: 'right', fontSize: 21, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: 'rgba(46,42,39,0.48)' }}>0.18</Text>
+            </Box>
+
+            {/* 结论条 */}
+            <Box style={{ position: 'absolute', left: 0, top: 264, width: 728, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Box style={{ width: 6, height: 6, borderRadius: 3, background: '#C0765C' }} />
+                <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.78)', lineHeight: 1.5 }}>
+                    三段全部低于门槛 → 如实返回「知识库中没有直接相关的内容」，不硬凑。
+                </Text>
+            </Box>
+
+            {/* 对照：门槛挡的是噪声，不是正常提问 */}
+            <Box style={{ position: 'absolute', left: 0, top: 308, width: 728, background: 'rgba(192,118,92,0.09)', borderLeft: '3px solid #C0765C', paddingTop: 14, paddingBottom: 14, paddingLeft: 16, paddingRight: 16 }}>
+                <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.85)', lineHeight: 1.65 }}>
+                    同一套参数下，「睡不着，躺下就开始想工作的事」稳定命中睡眠篇——<br />
+                    门槛挡住的是噪声，不是正常提问。这一条有测试守着。
+                </Text>
+            </Box>
+
+        </Box>
+
+    </Box>
+
+    {/* ── 右 · 洞察框 ── */}
+    <Box style={{ position: 'absolute', left: 848, top: 128, width: 360, height: 516, justifyContent: 'space-between' }}>
+
+        <Box>
+            <Text style={{ fontSize: 12, letterSpacing: '0.16em', color: '#6E7C8C', marginBottom: 6 }}>PARAMS</Text>
+
+            <Box style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 11, paddingTop: 11, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.70)' }}>知识库块数</Text>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#2E2A27' }}>72</Text>
+            </Box>
+            <Box style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 11, paddingTop: 11, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.70)' }}>BM25  k1 / b</Text>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#2E2A27' }}>1.5 / 0.75</Text>
+            </Box>
+            <Box style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 11, paddingTop: 11, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.70)' }}>单字权重</Text>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#2E2A27' }}>0.35</Text>
+            </Box>
+            <Box style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 11 }}>
+                <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.70)' }}>覆盖度门槛</Text>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#C0765C' }}>0.34</Text>
+            </Box>
+        </Box>
+
+        <Box style={{ background: 'rgba(110,124,140,0.09)', padding: 20 }}>
+            <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.85)', lineHeight: 1.75 }}>
+                问题不在排序，在召回。中文没有空格，单字切分会把「行为动力」和「渐近自由」连成一片噪声——所以用二元分词 + 单字降权，再加一道覆盖度闸门。
+            </Text>
+            <Text style={{ fontSize: 15, color: '#6E7C8C', lineHeight: 1.7, marginTop: 12 }}>
+                10 篇文档的规模，向量库是纯负债：多一个依赖、多一次网络、多一层不可解释。
+            </Text>
+        </Box>
+
+    </Box>
+
+    <Text style={{ position: 'absolute', right: 72, bottom: 22, fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>
+        06 / 10
+    </Text>
+
+</Slide>

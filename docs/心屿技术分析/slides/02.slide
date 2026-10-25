@@ -1,0 +1,101 @@
+<Slide style={{ width: 1280, height: 720, background: '#FBF7F2', padding: 0, position: 'relative', fontFamily: "'Noto Sans SC', system-ui, sans-serif" }}>
+
+    {/* ── A 区 · 标题块 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 46, flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+        <Box style={{ width: 4, height: 30, background: '#C0765C' }} />
+        <Text style={{ fontSize: 36, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.3 }}>
+            三个约束，决定了全部选型
+        </Text>
+    </Box>
+
+    {/* ── B 区 · 左栏（32%）+ 右栏 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 132, width: 1136, height: 516, flexDirection: 'row', gap: 36 }}>
+
+        {/* 左栏：结论先行 */}
+        <Box style={{ width: 320, background: 'rgba(110,124,140,0.10)', padding: 32, justifyContent: 'space-between' }}>
+            <Box>
+                <Text style={{ fontSize: 13, letterSpacing: '0.16em', color: '#6E7C8C', marginBottom: 26 }}>
+                    CONSTRAINT
+                </Text>
+                <Text style={{ fontSize: 30, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.45 }}>
+                    选型空间<br />被压到<br />只剩一条路
+                </Text>
+                <Box style={{ width: 44, height: 3, background: '#C0765C', marginTop: 24, marginBottom: 24 }} />
+            </Box>
+            <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.62)', lineHeight: 1.85 }}>
+                约束不是限制，是设计工具。<br />
+                它把「选什么」变成「什么不能选」。
+            </Text>
+        </Box>
+
+        {/* 右栏：三条约束 */}
+        <Box style={{ flex: 1, justifyContent: 'space-between' }}>
+
+            <Box style={{ flexDirection: 'row', gap: 22 }}>
+                <Text style={{ width: 52, fontSize: 30, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', lineHeight: 1.1 }}>
+                    01
+                </Text>
+                <Box style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.4 }}>
+                        不引框架，不引构建
+                    </Text>
+                    <Text style={{ fontSize: 16, color: '#6E7C8C', lineHeight: 1.5, marginTop: 7 }}>
+                        排除 React / Vue / Tailwind 运行时 / 任何构建流程
+                    </Text>
+                    <Text style={{ fontSize: 18, color: 'rgba(46,42,39,0.82)', lineHeight: 1.65, marginTop: 9 }}>
+                        前端是原生 HTML / CSS / JS。daisyUI 只取 10 个组件的预编译 CSS，<span style={{ color: '#C0765C', fontWeight: 'bold' }}>199 KB、gzip 后 14 KB</span>，没有运行时。
+                    </Text>
+                </Box>
+            </Box>
+
+            <Box style={{ height: 1, background: 'rgba(46,42,39,0.12)' }} />
+
+            <Box style={{ flexDirection: 'row', gap: 22 }}>
+                <Text style={{ width: 52, fontSize: 30, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', lineHeight: 1.1 }}>
+                    02
+                </Text>
+                <Box style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.4 }}>
+                        离线可用
+                    </Text>
+                    <Text style={{ fontSize: 16, color: '#6E7C8C', lineHeight: 1.5, marginTop: 7 }}>
+                        排除一切 CDN、网络字体、图标库
+                    </Text>
+                    <Text style={{ fontSize: 18, color: 'rgba(46,42,39,0.82)', lineHeight: 1.6, marginTop: 9 }}>
+                        依赖全部落地到 vendor/，字体用系统字体。断网时页面照常打开，只是回复会降级。
+                    </Text>
+                </Box>
+            </Box>
+
+            <Box style={{ height: 1, background: 'rgba(46,42,39,0.12)' }} />
+
+            <Box style={{ flexDirection: 'row', gap: 22 }}>
+                <Text style={{ width: 52, fontSize: 30, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', lineHeight: 1.1 }}>
+                    03
+                </Text>
+                <Box style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.4 }}>
+                        一个人能完整读懂
+                    </Text>
+                    <Text style={{ fontSize: 16, color: '#6E7C8C', lineHeight: 1.5, marginTop: 7 }}>
+                        排除 LangChain / LlamaIndex / 任何向量数据库
+                    </Text>
+                    <Text style={{ fontSize: 18, color: 'rgba(46,42,39,0.82)', lineHeight: 1.6, marginTop: 9 }}>
+                        检索自己写，120 行 BM25。每加一层抽象就多一层排查成本，而这条链路出事要人命。
+                    </Text>
+                </Box>
+            </Box>
+
+        </Box>
+    </Box>
+
+    {/* ── C 区 · 页脚条 ── */}
+    <Box style={{ position: 'absolute', left: 72, bottom: 22, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Box style={{ width: 6, height: 6, borderRadius: 3, background: '#C0765C' }} />
+        <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>心屿 · 技术分析</Text>
+    </Box>
+    <Text style={{ position: 'absolute', right: 72, bottom: 22, fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>
+        02 / 10
+    </Text>
+
+</Slide>

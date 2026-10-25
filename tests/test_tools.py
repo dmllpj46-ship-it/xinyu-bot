@@ -94,3 +94,51 @@ def test_knowledge_base_has_no_phone_numbers() -> None:
         text = path.read_text(encoding="utf-8")
         hits = re.findall(r"1[3-9]\d{9}|0\d{2,3}[- ]?\d{7,8}|\d{3,4}[- ]\d{3,4}[- ]\d{4}", text)
         assert not hits, f"{path.name} 里出现了号码 {hits}，应只从 crisis.py 取"
+
+
+# ── 联网搜索的来源过滤 ────────────────────────────────────
+# 实测「心理咨询补贴政策」这类泛化查询会召回台中市、卫福部的内容。
+# 面向大陆用户的产品不能原样转述，所以在来源层挡掉。
+
+
+def test_web_search_drops_hk_mo_tw_sources() -> None:
+    from app.tools.web_search import _format
+
+    data = {
+        "data": {
+            "results": [
+                {"title": "台中市免費心理諮商", "url": "https://www.health.taichung.gov.tw/x", "snippet": "衛福部"},
+                {"title": "青壯世代方案", "url": "https://www.mohw.gov.tw/y", "snippet": "衛福部"},
+                {"title": "香港心理衛生會", "url": "https://www.mheh.org.hk/b", "snippet": "香港"},
+                {"title": "国家卫健委 心理援助", "url": "https://www.nhc.gov.cn/z", "snippet": "12356"},
+            ]
+        }
+    }
+    out = _format(data)
+    assert "台中" not in out
+    assert "衛福部" not in out
+    assert "香港" not in out
+    assert "国家卫健委" in out
+
+
+def test_web_search_prefers_gov_sources() -> None:
+    from app.tools.web_search import _format
+
+    data = {
+        "data": {
+            "results": [
+                {"title": "某商业网站", "url": "https://example.com/a", "snippet": "内容"},
+                {"title": "省医保局", "url": "https://ybj.xx.gov.cn/a", "snippet": "纳入医保"},
+            ]
+        }
+    }
+    out = _format(data)
+    assert out.index("省医保局") < out.index("某商业网站")
+
+
+def test_web_search_all_blocked_degrades() -> None:
+    from app.tools.web_search import _format
+
+    data = {"data": {"results": [{"title": "台中市", "url": "https://a.gov.tw/x", "snippet": "x"}]}}
+    out = _format(data)
+    assert "中国大陆" in out

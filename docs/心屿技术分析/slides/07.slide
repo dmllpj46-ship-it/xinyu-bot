@@ -1,0 +1,95 @@
+<Slide style={{ width: 1280, height: 720, background: '#FBF7F2', padding: 0, position: 'relative', fontFamily: "'Noto Sans SC', system-ui, sans-serif" }}>
+
+    {/* ── A 区 · 标题块 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 46, flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+        <Box style={{ width: 4, height: 30, background: '#C0765C' }} />
+        <Text style={{ fontSize: 36, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.3 }}>
+            迁移不是移植，是重写假设
+        </Text>
+    </Box>
+
+    {/* ── 左栏 · 结论 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 132, width: 300, height: 516, background: 'rgba(110,124,140,0.10)', padding: 28, justifyContent: 'space-between' }}>
+        <Box>
+            <Text style={{ fontSize: 12, letterSpacing: '0.16em', color: '#6E7C8C', marginBottom: 22 }}>MIGRATION</Text>
+            <Text style={{ fontSize: 44, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', lineHeight: 1.1 }}>
+                8
+            </Text>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.4, marginTop: 4 }}>
+                个适配点
+            </Text>
+            <Box style={{ width: 44, height: 3, background: '#C0765C', marginTop: 20, marginBottom: 20 }} />
+        </Box>
+        <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.68)', lineHeight: 1.9 }}>
+            Workers 不是把 Python 跑起来，而是把运行时假设逐条重写：文件系统、常驻进程、中间件、Responses API。
+        </Text>
+    </Box>
+
+    {/* ── 右栏 · 8 行对照 ── */}
+    <Box style={{ position: 'absolute', left: 400, top: 132, width: 808, height: 516 }}>
+
+        {/* 表头 */}
+        <Box style={{ flexDirection: 'row', paddingBottom: 8, borderBottom: '1.5px solid rgba(46,42,39,0.35)' }}>
+            <Text style={{ width: 214, fontSize: 12, letterSpacing: '0.1em', color: '#6E7C8C' }}>原实现</Text>
+            <Text style={{ width: 246, fontSize: 12, letterSpacing: '0.1em', color: '#6E7C8C' }}>为什么不行</Text>
+            <Text style={{ width: 348, fontSize: 12, letterSpacing: '0.1em', color: '#C0765C' }}>WORKER 版做法</Text>
+        </Box>
+
+        <Box style={{ justifyContent: 'space-between', flex: 1, paddingTop: 4 }}>
+
+            <Box style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 9, paddingBottom: 9, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ width: 214, fontSize: 15, color: '#2E2A27' }}>SQLiteSession</Text>
+                <Text style={{ width: 246, fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>无文件系统、无常驻进程</Text>
+                <Text style={{ width: 348, fontSize: 15, color: 'rgba(46,42,39,0.80)' }}>浏览器持 history，每轮回传</Text>
+            </Box>
+
+            <Box style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 9, paddingBottom: 9, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ width: 214, fontSize: 15, color: '#2E2A27' }}>读盘 kb_index.json</Text>
+                <Text style={{ width: 246, fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>Worker 里没有 fs</Text>
+                <Text style={{ width: 348, fontSize: 15, color: 'rgba(46,42,39,0.80)' }}>构建期编译成 kb.ts</Text>
+            </Box>
+
+            <Box style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 9, paddingBottom: 9, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ width: 214, fontSize: 15, color: '#2E2A27' }}>ChatCompletionsModel</Text>
+                <Text style={{ width: 246, fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>Python 专有类</Text>
+                <Text style={{ width: 348, fontSize: 15, color: 'rgba(46,42,39,0.80)' }}>OpenAIProvider(useResponses: false)</Text>
+            </Box>
+
+            <Box style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 9, paddingBottom: 9, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ width: 214, fontSize: 15, color: '#2E2A27' }}>extra_body</Text>
+                <Text style={{ width: 246, fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>TS 侧无此参数</Text>
+                <Text style={{ width: 348, fontSize: 15, color: 'rgba(46,42,39,0.80)' }}>modelSettings.providerData</Text>
+            </Box>
+
+            <Box style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 9, paddingBottom: 9, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ width: 214, fontSize: 15, color: '#2E2A27' }}>@function_tool</Text>
+                <Text style={{ width: 246, fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>Python 装饰器语法</Text>
+                <Text style={{ width: 348, fontSize: 15, color: 'rgba(46,42,39,0.80)' }}>tool() 声明式注册，参数用 JSON Schema</Text>
+            </Box>
+
+            <Box style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 9, paddingBottom: 9, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ width: 214, fontSize: 15, color: '#2E2A27' }}>httpx</Text>
+                <Text style={{ width: 246, fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>无此依赖</Text>
+                <Text style={{ width: 348, fontSize: 15, color: 'rgba(46,42,39,0.80)' }}>fetch + AbortSignal.timeout(8s)</Text>
+            </Box>
+
+            <Box style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 9, paddingBottom: 9, borderBottom: '1px solid rgba(46,42,39,0.10)' }}>
+                <Text style={{ width: 214, fontSize: 15, color: '#2E2A27' }}>StreamingResponse</Text>
+                <Text style={{ width: 246, fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>无此 API</Text>
+                <Text style={{ width: 348, fontSize: 15, color: 'rgba(46,42,39,0.80)' }}>手写 ReadableStream + SSE 帧</Text>
+            </Box>
+
+            <Box style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 9, paddingBottom: 9 }}>
+                <Text style={{ width: 214, fontSize: 15, color: '#2E2A27' }}>静态文件挂载</Text>
+                <Text style={{ width: 246, fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>无中间件栈</Text>
+                <Text style={{ width: 348, fontSize: 15, color: 'rgba(46,42,39,0.80)' }}>assets 绑定 + run_worker_first</Text>
+            </Box>
+
+        </Box>
+    </Box>
+
+    <Text style={{ position: 'absolute', right: 72, bottom: 22, fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>
+        07 / 10
+    </Text>
+
+</Slide>

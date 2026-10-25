@@ -1,0 +1,52 @@
+<Slide style={{ width: 1280, height: 720, background: '#FBF7F2', padding: 0, position: 'relative', fontFamily: "'Noto Sans SC', system-ui, sans-serif" }}>
+
+    <Box style={{ position: 'absolute', left: 0, top: 0, width: 1280, height: 720, alignItems: 'center', justifyContent: 'center' }}>
+
+        <Text style={{ fontSize: 15, letterSpacing: '0.2em', color: '#6E7C8C', marginBottom: 30 }}>
+            TAKEAWAY
+        </Text>
+
+        <Text style={{ fontSize: 62, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.25, textAlign: 'center', letterSpacing: '0.01em' }}>
+            把不确定性挡在模型之外
+        </Text>
+
+        <Box style={{ width: 64, height: 3, background: '#C0765C', marginTop: 34, marginBottom: 34 }} />
+
+        <Text style={{ fontSize: 19, color: 'rgba(46,42,39,0.70)', lineHeight: 1.75, textAlign: 'center', width: 660 }}>
+            凡是不能出错的判断，都不要交给模型。诊断、药量、危机话术、电话号码——全部落成代码里的确定性。
+        </Text>
+
+        {/* 三个数字 */}
+        <Box style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 0, marginTop: 62 }}>
+
+            <Box style={{ width: 230, alignItems: 'center' }}>
+                <Text style={{ fontSize: 56, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', lineHeight: 1.0 }}>0</Text>
+                <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.58)', marginTop: 12, textAlign: 'center' }}>危机路径调用模型</Text>
+            </Box>
+
+            <Box style={{ width: 1, height: 74, background: 'rgba(46,42,39,0.14)' }} />
+
+            <Box style={{ width: 230, alignItems: 'center' }}>
+                <Text style={{ fontSize: 56, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', lineHeight: 1.0 }}>116</Text>
+                <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.58)', marginTop: 12, textAlign: 'center' }}>条测试</Text>
+            </Box>
+
+            <Box style={{ width: 1, height: 74, background: 'rgba(46,42,39,0.14)' }} />
+
+            <Box style={{ width: 230, alignItems: 'center' }}>
+                <Text style={{ fontSize: 56, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', lineHeight: 1.0 }}>72</Text>
+                <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.58)', marginTop: 12, textAlign: 'center' }}>个知识库块</Text>
+            </Box>
+
+        </Box>
+
+    </Box>
+
+    {/* 落款 */}
+    <Box style={{ position: 'absolute', left: 0, bottom: 44, width: 1280, alignItems: 'center' }}>
+        <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.42)', letterSpacing: '0.06em' }}>
+            github.com/dmllpj46-ship-it/xinyu-bot　·　xinyu-bot.poetfangnimagoupi.workers.dev
+        </Text>
+    </Box>
+
+</Slide>

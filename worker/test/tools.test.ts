@@ -89,3 +89,105 @@ describe("R4 号码唯一真相源", () => {
     }
   });
 });
+
+// ── 联网搜索 ──────────────────────────────────────────────
+// 2026-10 的静默失效：请求写死 tag: "general.web"，AnySearch 改名后返回 400，
+// 工具降级成「请用本地知识库回答」，用户端看不到任何报错。这里钉住请求体。
+
+describe("web_search", () => {
+  const env = { ANYSEARCH_API_KEY: "test-key" } as never;
+
+  it("请求里不带 tag", async () => {
+    let sent: Record<string, unknown> = {};
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body));
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          data: { results: [{ title: "标题", url: "https://example.com", snippet: "摘要" }] },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const { webSearchText } = await import("../src/tools/webSearch");
+      const out = await webSearchText(env, "测试查询");
+      expect("tag" in sent).toBe(false);
+      expect(sent.query).toBe("测试查询");
+      expect(out).toContain("标题");
+      expect(out).toContain("https://example.com");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("HTTP 400 时降级而不是抛异常", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ code: -1, message: "Invalid tag: general.web." }), {
+        status: 400,
+      })) as typeof fetch;
+
+    try {
+      const { webSearchText } = await import("../src/tools/webSearch");
+      const out = await webSearchText(env, "测试查询");
+      expect(out).toContain("联网搜索暂时不可用");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("缺 key 时明确说明未配置", async () => {
+    const { webSearchText } = await import("../src/tools/webSearch");
+    const out = await webSearchText({} as never, "测试查询");
+    expect(out).toContain("ANYSEARCH_API_KEY");
+  });
+});
+
+describe("web_search 来源过滤", () => {
+  // 实测「心理咨询补贴政策」这类泛化查询会召回台中市、卫福部的内容。
+  // 面向大陆用户的产品不能原样转述，所以在来源层挡掉。
+  const env = { ANYSEARCH_API_KEY: "test-key" } as never;
+
+  async function runWith(results: Array<Record<string, string>>): Promise<string> {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ code: 0, data: { results } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+    try {
+      const { webSearchText } = await import("../src/tools/webSearch");
+      return await webSearchText(env, "测试查询");
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("丢掉港澳台来源", async () => {
+    const out = await runWith([
+      { title: "台中市免費心理諮商", url: "https://www.health.taichung.gov.tw/x", snippet: "衛福部" },
+      { title: "香港心理衛生會", url: "https://www.mheh.org.hk/b", snippet: "香港" },
+      { title: "国家卫健委 心理援助", url: "https://www.nhc.gov.cn/z", snippet: "12356" },
+    ]);
+    expect(out).not.toContain("台中");
+    expect(out).not.toContain("衛福部");
+    expect(out).not.toContain("香港");
+    expect(out).toContain("国家卫健委");
+  });
+
+  it("官方来源排在前面", async () => {
+    const out = await runWith([
+      { title: "某商业网站", url: "https://example.com/a", snippet: "内容" },
+      { title: "省医保局", url: "https://ybj.xx.gov.cn/a", snippet: "纳入医保" },
+    ]);
+    expect(out.indexOf("省医保局")).toBeLessThan(out.indexOf("某商业网站"));
+  });
+
+  it("全部被挡时降级说明", async () => {
+    const out = await runWith([{ title: "台中市", url: "https://a.gov.tw/x", snippet: "x" }]);
+    expect(out).toContain("中国大陆");
+  });
+});

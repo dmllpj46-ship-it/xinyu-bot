@@ -205,6 +205,9 @@
           const { event, data } = frame;
           if (event === "meta") {
             if (data.crisis) document.body.classList.add("crisis");
+            // 检索路径要等 1–4 秒，先给个胶囊，别让人对着空气泡等
+            if (data.mode === "kb") addToolPill(botNode, "正在查阅资料…");
+            else if (data.mode === "web") addToolPill(botNode, "正在联网查证…");
           } else if (event === "crisis") {
             gotCrisis = true;
             addCrisisCard(botNode, data);

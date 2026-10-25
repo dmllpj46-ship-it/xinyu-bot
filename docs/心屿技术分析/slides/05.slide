@@ -1,0 +1,104 @@
+<Slide style={{ width: 1280, height: 720, background: '#FBF7F2', padding: 0, position: 'relative', fontFamily: "'Noto Sans SC', system-ui, sans-serif" }}>
+
+    {/* ── A 区 · 标题块 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 46, flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+        <Box style={{ width: 4, height: 30, background: '#C0765C' }} />
+        <Text style={{ fontSize: 36, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.3 }}>
+            四级分流：宁可误报
+        </Text>
+    </Box>
+
+    {/* ── 左栏 62% · 阶梯 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 132, width: 700, height: 512, justifyContent: 'space-between' }}>
+
+        {/* L0 */}
+        <Box style={{ width: 700, height: 92, background: 'rgba(110,124,140,0.07)', paddingLeft: 22, paddingRight: 22, paddingTop: 16, paddingBottom: 16, justifyContent: 'center' }}>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Text style={{ fontSize: 26, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: 'rgba(110,124,140,0.55)', width: 46 }}>L0</Text>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2E2A27' }}>日常压力</Text>
+                <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>「加班到凌晨，很累」</Text>
+            </Box>
+            <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.72)', lineHeight: 1.55, marginTop: 8 }}>
+                正常对话：共情 → 一个可执行的小动作。不出卡片。
+            </Text>
+        </Box>
+
+        {/* L1 */}
+        <Box style={{ width: 700, height: 106, background: 'rgba(110,124,140,0.11)', paddingLeft: 22, paddingRight: 22, paddingTop: 16, paddingBottom: 16, justifyContent: 'center' }}>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Text style={{ fontSize: 26, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: 'rgba(110,124,140,0.72)', width: 46 }}>L1</Text>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2E2A27' }}>被动意念</Text>
+                <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>「活着没意思」</Text>
+            </Box>
+            <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.72)', lineHeight: 1.55, marginTop: 8 }}>
+                不给卡片，但必须直接问意图——「你有想过伤害自己吗」。不绕。
+            </Text>
+        </Box>
+
+        {/* L2 */}
+        <Box style={{ width: 700, height: 120, background: 'rgba(110,124,140,0.17)', paddingLeft: 22, paddingRight: 22, paddingTop: 16, paddingBottom: 16, justifyContent: 'center' }}>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Text style={{ fontSize: 26, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#6E7C8C', width: 46 }}>L2</Text>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2E2A27' }}>主动意念</Text>
+                <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>「我不想活了」</Text>
+            </Box>
+            <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.78)', lineHeight: 1.55, marginTop: 8 }}>
+                出卡片 + 写死话术，<span style={{ fontWeight: 'bold' }}>不调用模型</span>，整页转冷色。
+            </Text>
+        </Box>
+
+        {/* L3 */}
+        <Box style={{ width: 700, height: 134, background: 'rgba(192,118,92,0.16)', borderLeft: '3px solid #C0765C', paddingLeft: 19, paddingRight: 22, paddingTop: 16, paddingBottom: 16, justifyContent: 'center' }}>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Text style={{ fontSize: 26, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', width: 46 }}>L3</Text>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2E2A27' }}>即时危险</Text>
+                <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.55)' }}>「已经割腕了」</Text>
+            </Box>
+            <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.82)', lineHeight: 1.55, marginTop: 8 }}>
+                顺序不同：<span style={{ color: '#C0765C', fontWeight: 'bold' }}>先 120</span>，再 12356。急救优先于倾听。
+            </Text>
+        </Box>
+
+    </Box>
+
+    {/* ── 右栏 38% · 已处理的规避手法 ── */}
+    <Box style={{ position: 'absolute', left: 812, top: 132, width: 396, height: 512 }}>
+
+        <Text style={{ fontSize: 12, letterSpacing: '0.16em', color: '#6E7C8C', marginBottom: 14 }}>BYPASS · 已处理四类规避</Text>
+
+        <Box style={{ justifyContent: 'space-between', flex: 1 }}>
+
+            <Box style={{ borderTop: '1px solid rgba(46,42,39,0.12)', paddingTop: 12 }}>
+                <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.4 }}>否定式</Text>
+                <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.62)', lineHeight: 1.55, marginTop: 5 }}>「我不会自杀」→ 判 L0，不误伤</Text>
+            </Box>
+
+            <Box style={{ borderTop: '1px solid rgba(46,42,39,0.12)', paddingTop: 12 }}>
+                <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.4 }}>否定不赦免后半句</Text>
+                <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.62)', lineHeight: 1.55, marginTop: 5 }}>「我不会自杀，但有时候真的想死」→ 仍判 L2</Text>
+            </Box>
+
+            <Box style={{ borderTop: '1px solid rgba(46,42,39,0.12)', paddingTop: 12 }}>
+                <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.4 }}>第三人称</Text>
+                <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.62)', lineHeight: 1.55, marginTop: 5 }}>「我朋友说他想自杀」→ 判 L2，换求助话术</Text>
+            </Box>
+
+            <Box style={{ borderTop: '1px solid rgba(46,42,39,0.12)', paddingTop: 12 }}>
+                <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.4 }}>空格规避</Text>
+                <Text style={{ fontSize: 15, color: 'rgba(46,42,39,0.62)', lineHeight: 1.55, marginTop: 5 }}>「自 杀」→ 归一化去空白后仍命中</Text>
+            </Box>
+
+            <Box style={{ borderTop: '2px solid #C0765C', paddingTop: 14, background: 'rgba(192,118,92,0.07)', paddingLeft: 14, paddingRight: 14, paddingBottom: 14 }}>
+                <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.85)', lineHeight: 1.7 }}>
+                    误报的代价只是多问一句；<br />漏报不可逆。<br />所以分级只做加严，不做放宽。
+                </Text>
+            </Box>
+
+        </Box>
+    </Box>
+
+    <Text style={{ position: 'absolute', right: 72, bottom: 22, fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>
+        05 / 10
+    </Text>
+
+</Slide>

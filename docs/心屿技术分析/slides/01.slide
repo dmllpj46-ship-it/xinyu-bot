@@ -1,0 +1,54 @@
+<Slide style={{ width: 1280, height: 720, background: '#FBF7F2', padding: 0, position: 'relative', fontFamily: "'Noto Sans SC', system-ui, sans-serif" }}>
+
+    {/* ── L1 主视觉：右侧同心弧结构（占 62%，全幅出血） ── */}
+    <Box style={{ position: 'absolute', top: 0, right: 0, width: 800, height: 720 }}>
+        <svg width={800} height={720} viewBox='0 0 800 720'>
+            <g fill='none' stroke='#6E7C8C'>
+                <circle cx='880' cy='360' r='640' strokeWidth='1.5' opacity='0.09' />
+                <circle cx='880' cy='360' r='530' strokeWidth='1.5' opacity='0.13' />
+                <circle cx='880' cy='360' r='420' strokeWidth='1.5' opacity='0.17' />
+                <circle cx='880' cy='360' r='310' strokeWidth='1.5' opacity='0.22' />
+                <circle cx='880' cy='360' r='200' strokeWidth='3' opacity='0.30' />
+            </g>
+            <g fill='#6E7C8C'>
+                <circle cx='700' cy='183' r='6' opacity='0.40' />
+                <circle cx='563' cy='332' r='6' opacity='0.50' />
+                <circle cx='601' cy='520' r='6' opacity='0.40' />
+                <circle cx='742' cy='560' r='6' opacity='0.35' />
+            </g>
+            <circle cx='680' cy='360' r='11' fill='#C0765C' />
+            <circle cx='680' cy='360' r='24' fill='none' stroke='#C0765C' strokeWidth='1.5' opacity='0.42' />
+            <text x='680' y='410' fill='#C0765C' fontFamily="'Noto Sans SC', sans-serif" fontSize='13' textAnchor='middle' opacity='0.8'>唯一允许的确定性出口</text>
+        </svg>
+    </Box>
+
+    {/* ── 左侧文字（骑入画面，不居中） ── */}
+    <Box style={{ position: 'absolute', left: 96, top: 0, width: 486, height: 720, justifyContent: 'center' }}>
+
+        <Text style={{ fontSize: 15, letterSpacing: '0.14em', color: '#6E7C8C', marginBottom: 22 }}>
+            技术评审 · 架构复盘 · 2026-10
+        </Text>
+
+        <Text style={{ fontSize: 76, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.15, letterSpacing: '0.02em' }}>
+            心屿
+        </Text>
+
+        <Box style={{ width: 52, height: 3, background: '#C0765C', marginTop: 26, marginBottom: 26 }} />
+
+        <Text style={{ fontSize: 26, color: '#2E2A27', lineHeight: 1.5, fontFamily: "'Noto Serif SC', Georgia, serif" }}>
+            一个会主动闭嘴的<br />心理陪练 Bot
+        </Text>
+
+        <Text style={{ fontSize: 17, color: 'rgba(46,42,39,0.62)', lineHeight: 1.75, marginTop: 20 }}>
+            危机路径调用模型 <span style={{ color: '#C0765C', fontWeight: 'bold' }}>0</span> 次<br />
+            116 条测试锁住红线 · 同一套业务跑在两个运行时上
+        </Text>
+
+    </Box>
+
+    {/* ── 页码（封面保留，14px） ── */}
+    <Text style={{ position: 'absolute', right: 72, bottom: 40, fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>
+        01 / 10
+    </Text>
+
+</Slide>

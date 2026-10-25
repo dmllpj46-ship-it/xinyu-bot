@@ -261,9 +261,11 @@ Mercury 3 的 API 层会拒答自杀相关内容。所以 L2/L3 **不调模型**
 | R7 | 用户把 Bot 当治疗替代 | 高 | 高 | 首次对话声明 + 每 5 轮一次轻提醒 + 转介阈值硬编码 |
 | R8 | 合规风险（对外提供服务） | — | 高 | v1 仅本机自用；对外前单独评估，README §7 已声明 |
 | R9 | **模型拒答自杀相关内容**（已发生） | 已确认 | 极高 | L2/L3 不调模型，走写死话术；其他轮次有 `_REFUSAL_FALLBACK` |
-| R10 | **双运行时行为漂移**（改了 Python 忘改 TS） | 高 | 极高 | AGENTS §2.3 镜像表 + 两边 safety 测试同源用例；改 `safety/` 的 PR 必须两边都过 |
+| R10 | **双运行时行为漂移**（改了 Python 忘改 TS） | 高 | 极高 | AGENTS §2.3 镜像表 + 两边 safety/routing 测试同源用例；改 `safety/` 或 `routing` 的 PR 必须两边都过 |
 | R11 | Worker 无状态导致多轮失忆（浏览器刷新） | 高 | 中 | 前端持有 `history`，每轮回传 10 轮；界面上"新的对话"按钮语义清晰；可接受 |
 | R12 | 知识库编译进包体，扩容后包变大 | 低 | 中 | 当前 43 KB 无碍；超过 ~50 篇改走 KV/R2（见 README §9.7） |
+| R13 | **路由误判**：该检索没检索 | 中 | 低 | 回答变浅但不失真；`routing` 的判错代价已按"不对称但都可接受"设计，且不触碰安全线 |
+| R14 | **外部 API 静默失效**（tag 改名这类） | 中 | 中 | 搜索失败只降级不报错，用户看不到故障 → 每次改外部依赖后跑一次连通性自检；请求尽量不带可选参数 |
 
 ---
 
@@ -294,20 +296,35 @@ Mercury 3 的 API 层会拒答自杀相关内容。所以 L2/L3 **不调模型**
 
 ---
 
-## 12. 实施进度（2026-10-25）
+## 12. 实施进度（2026-10-26）
 
-P0–P5 已全部落地，`pytest` **60 条**全绿，`scripts/smoke_test.py` 5 条端到端全过。
-P7（Cloudflare Workers）已落地，`npm test` **56 条**全绿，`npm run typecheck` 零错误。
+P0–P5 已全部落地，`pytest` **87 条**全绿，`scripts/smoke_test.py` 5 条端到端全过。
+P7（Cloudflare Workers）已落地，`npm test` **91 条**全绿，`npm run typecheck` 零错误。
+P8（延迟优化与检索修复）已落地，见下方"第二轮迭代"。
 
 | 阶段 | 状态 | 落地物 |
 |---|---|---|
 | P0 骨架 | ✅ | `.venv`、`requirements.txt`、`app/config.py`、`app/main.py`、`.gitignore` |
 | P1 知识库 | ✅ | `knowledge/` 9 篇 → 72 块；`scripts/ingest_kb.py`；`app/tools/kb_search.py`（BM25 + 覆盖度门槛） |
 | P2 Agent | ✅ | `app/prompts/system.md`、`app/agent.py`、`app/tools/{web_search,crisis}.py` |
-| P3 安全层 | ✅ | `safety/{lexicon,input_guard,output_guard,crisis_script}.py`，38 条测试 |
+| P3 安全层 | ✅ | `safety/{lexicon,input_guard,output_guard,crisis_script}.py` |
 | P4 UI | ✅ | `web/{index.html,style.css,app.js}` + `POST /api/chat` SSE |
 | P5 验收 | ✅ | `tests/`、`scripts/smoke_test.py`、`scripts/screenshot.mjs`、`docs/*.png` |
-| P7 Workers | ✅ | `worker/src/**`（TS 全量镜像）、`wrangler.jsonc`、`scripts/build-kb.mjs`、`worker/test/` 56 条、`docs/ui-worker*.png` |
+| P7 Workers | ✅ | `worker/src/**`（TS 全量镜像）、`wrangler.jsonc`、`scripts/build-kb.mjs`、`worker/test/` |
+| P8 延迟与检索 | ✅ | `routing.py` / `routing.ts`、输出句级去重、联网 tag 修复 |
+
+**第二轮迭代（P8，线上反馈驱动的三项修复）：**
+
+| 问题 | 根因 | 修法 |
+|---|---|---|
+| 联网搜索不可用 | 请求写死 `tag: "general.web"`，AnySearch 已改名 → 400 | 去掉 tag，走默认通用搜索；超时 8s→6s |
+| 同一句话说两遍 | 模型在工具调用前后各写一次开场共情；示例原句被整段背下来 | `StreamScrubber` 句级硬去重 + prompt 加"只说一次" + 换掉示例措辞 |
+| 常识问题也检索，慢 | 每轮都挂全部三个工具 | 新增 `routing`：chat 不挂工具、kb/web 各挂一个，指令里限定"只查一次" |
+
+实测收益：纯对话首字 0.8–1.6s（原来每次至少多一轮工具往返）；kb 1.4s；联网 4.4s（仅在问政策/机构时触发）。
+
+顺带修掉一个**漏报**：`活着没什么意思` 因为"没"在"什么"前面，原来的
+`没意思` 连写正则匹配不到，被判成 L0。已改为 `没.{0,2}(意思|意义)`，两边都有回归测试。
 
 **与原计划的偏差（都是实测后改的）：**
 

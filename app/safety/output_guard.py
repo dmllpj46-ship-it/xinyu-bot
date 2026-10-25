@@ -5,6 +5,7 @@
 - 不给药名/剂量（R2）
 - 不劝阻就医（R5）
 另外顺手兜住"模型编造电话号码"——号码只能来自 app/tools/crisis.py。
+以及兜住"同一句话说两遍"——见下面 RepeatGuard 的说明。
 
 流式的难点是"句子还没说完就得往外发"。所以按句边界缓冲：
 遇到 。！？!? 或换行才检查这一句；缓冲超过 140 字强制检查一次，避免长句卡住。
@@ -13,6 +14,7 @@
 from __future__ import annotations
 
 import re
+from difflib import SequenceMatcher
 
 # ── 白名单号码（与 app/tools/crisis.py 保持一致）──────────────
 ALLOWED_NUMBERS = {"12356", "120", "110", "119", "82951332", "01082951332"}
@@ -68,6 +70,33 @@ def _mask_phones(text: str) -> tuple[str, bool]:
 
 _ASCII_QUOTE = re.compile(r'"([^"\n]{1,24})"')
 
+# ── 重复句检测 ──────────────────────────────────────────────
+# 模型会把同一句话写两遍：一次是"先共情"，一次是工具调用回来后"重新开头"。
+# 提示词能降低概率，但压不到零（Mercury 3 尤其容易复用示例原句），
+# 所以这里做一道硬去重——重复的那句直接不发。
+_DEDUP_STRIP = re.compile(r"[\s。！？!?；;，,、：:「」『』“”\"'（）()\[\]—…·~～]+")
+
+EXACT_MIN = 4  # 短于此不判重，否则「嗯。」「对。」会被误杀
+CONTAIN_MIN = 10  # 包含关系只在够长时才成立
+SIMILAR_MIN = 12  # 相似度比较的长度门槛
+SIMILAR_RATIO = 0.72
+MAX_TAIL_NEWLINES = 2  # 连续空行上限，对应一个段落间隔
+
+
+def _dedup_key(text: str) -> str:
+    return _DEDUP_STRIP.sub("", text)
+
+
+def _similar(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+
+_SENTENCE_SPLIT = re.compile(r"(?<=[。！？!?；;\n])")
+
+
+def _sentences(text: str) -> list[str]:
+    return [p for p in _SENTENCE_SPLIT.split(text) if p.strip()]
+
 
 def _fancy_quotes(text: str) -> str:
     """把模型吐出的 "下班" 变成「下班」——中文正文里 ASCII 引号很出戏。"""
@@ -81,13 +110,24 @@ def _fancy_quotes(text: str) -> str:
     return _ASCII_QUOTE.sub(_sub, text)
 
 
+_MD_HEADING = re.compile(r"(?m)^#{1,6}\s*")
+
+
+def _strip_markdown(text: str) -> str:
+    """去掉 Markdown 标记。前端按纯文本渲染，`**` 和 `#` 会原样露出来。
+
+    只删标记不删文字：`**重点**` → `重点`，不是整句丢掉。
+    """
+    return _MD_HEADING.sub("", text.replace("**", ""))
+
+
 def scrub(sentence: str) -> tuple[str, list[str]]:
     """检查一个句子片段，返回（安全文本, 违规标签）。
 
     号码是"就地替换"，其他红线是"整句替换"——因为改号码不会让句子变病句，
     而删掉半句诊断会。
     """
-    text, phone_hit = _mask_phones(_fancy_quotes(sentence))
+    text, phone_hit = _mask_phones(_strip_markdown(_fancy_quotes(sentence)))
 
     violations: list[str] = []
     if _DRUG_RX.search(text) or (_DOSE.search(text) and re.search(r"(吃|服|药|剂)", text)):
@@ -115,9 +155,18 @@ class StreamScrubber:
     BOUNDARY = "。！？!?\n；;"
     MAX_BUFFER = 140
 
-    def __init__(self) -> None:
+    def __init__(self, seed: str = "") -> None:
         self._buf = ""
+        self._seen: list[str] = []
+        self._tail_nl = 0  # 已经连续发出的换行数，用来收敛多余空行
         self.violations: list[str] = []
+        # 跨轮去重：把上一轮回复里"有分量"的句子先记进来。
+        # 只收够长的句子——「要不要试试？」这类衔接语重复出现是自然的，
+        # 但"床和睡觉的关系会重新建立起来"这种整句连着说两遍就很机械。
+        for seg in _sentences(seed):
+            key = _dedup_key(seg)
+            if len(key) >= CONTAIN_MIN:
+                self._seen.append(key)
 
     def feed(self, chunk: str) -> str:
         self._buf += chunk
@@ -140,7 +189,47 @@ class StreamScrubber:
     def _clean(self, seg: str) -> str:
         text, bad = scrub(seg)
         self.violations.extend(bad)
+        return self._dedup(text)
+
+    def _dedup(self, text: str) -> str:
+        """已经说过的句子不再发第二遍。"""
+        if not text:
+            return text
+        key = _dedup_key(text)
+
+        # 纯空白/纯标点：控制连续换行不超过 2 个。
+        # 否则丢掉一句之后，原来那句前后的 \n\n 会拼成一片空白。
+        if not key:
+            newlines = text.count("\n")
+            if newlines == 0:
+                return ""
+            allow = max(0, MAX_TAIL_NEWLINES - self._tail_nl)
+            emit = "\n" * min(newlines, allow)
+            self._tail_nl += emit.count("\n")
+            return emit
+
+        if len(key) < EXACT_MIN:
+            self._tail_nl = 0
+            return text
+
+        if self._is_repeat(key):
+            self.violations.append("repeat")
+            return ""
+
+        self._seen.append(key)
+        self._tail_nl = 0
         return text
+
+    def _is_repeat(self, key: str) -> bool:
+        for prev in self._seen:
+            if key == prev:
+                return True
+            short, long_ = (key, prev) if len(key) <= len(prev) else (prev, key)
+            if len(short) >= CONTAIN_MIN and short in long_:
+                return True
+            if len(short) >= SIMILAR_MIN and _similar(key, prev) >= SIMILAR_RATIO:
+                return True
+        return False
 
     def _next_boundary(self, s: str) -> int | None:
         for i, ch in enumerate(s):

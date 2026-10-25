@@ -37,6 +37,7 @@ const REPLACEMENTS: Record<string, string> = {
 };
 
 const ASCII_QUOTE = /"([^"\n]{1,24})"/g;
+const MD_HEADING = /^#{1,6}\s*/gm;
 
 /** 把模型吐出的 "下班" 变成「下班」——中文正文里 ASCII 引号很出戏。 */
 function fancyQuotes(text: string): string {
@@ -44,6 +45,14 @@ function fancyQuotes(text: string): string {
     if (/[A-Za-z]/.test(inner) || !/[\u4e00-\u9fff]/.test(inner)) return whole;
     return `「${inner}」`;
   });
+}
+
+/**
+ * 去掉 Markdown 标记。前端按纯文本渲染，`**` 和 `#` 会原样露出来。
+ * 只删标记不删文字：`**重点**` → `重点`，不是整句丢掉。
+ */
+function stripMarkdown(text: string): string {
+  return text.replace(/\*\*/g, "").replace(MD_HEADING, "");
 }
 
 function maskPhones(text: string): { text: string; hit: boolean } {
@@ -71,7 +80,7 @@ export interface ScrubResult {
  * 而删掉半句诊断会。
  */
 export function scrub(sentence: string): ScrubResult {
-  const masked = maskPhones(fancyQuotes(sentence));
+  const masked = maskPhones(stripMarkdown(fancyQuotes(sentence)));
   const text = masked.text;
 
   const violations: string[] = [];
@@ -94,13 +103,69 @@ export function scrub(sentence: string): ScrubResult {
 
 const BOUNDARY = new Set(["。", "！", "？", "!", "?", "\n", "；", ";"]);
 
+// ── 重复句检测 ────────────────────────────────────────────
+// 模型会把同一句话写两遍：一次是「先共情」，一次是工具调用回来后「重新开头」。
+// 提示词能降低概率，但压不到零（Mercury 3 尤其容易复用示例原句），
+// 所以这里做一道硬去重——重复的那句直接不发。
+const DEDUP_STRIP = /[\s。！？!?；;，,、：:「」『』“”"'（）()\[\]—…·~～]+/g;
+
+const EXACT_MIN = 4; // 短于此不判重，否则「嗯。」「对。」会被误杀
+const CONTAIN_MIN = 10; // 包含关系只在够长时才成立
+const SIMILAR_MIN = 12; // 相似度比较的长度门槛
+const SIMILAR_RATIO = 0.72;
+const MAX_TAIL_NEWLINES = 2; // 连续空行上限，对应一个段落间隔
+
+function dedupKey(text: string): string {
+  return text.replace(DEDUP_STRIP, "");
+}
+
+/** 最长公共子序列长度（句子都很短，DP 足够）。 */
+function lcsLen(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (!m || !n) return 0;
+  let prev = new Array<number>(n + 1).fill(0);
+  let cur = new Array<number>(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    const tmp = prev;
+    prev = cur;
+    cur = tmp;
+    cur.fill(0);
+  }
+  return prev[n];
+}
+
+/** 与 Python 的 difflib.SequenceMatcher.ratio() 同一口径：2M/T。 */
+function similarity(a: string, b: string): number {
+  const total = a.length + b.length;
+  return total ? (2 * lcsLen(a, b)) / total : 0;
+}
+
+function sentences(text: string): string[] {
+  return text.split(/(?<=[。！？!?；;\n])/).filter((p) => p.trim());
+}
+
 export class StreamScrubber {
   private buf = "";
+  private seen: string[] = [];
+  private tailNl = 0; // 已经连续发出的换行数，用来收敛多余空行
   readonly violations: string[] = [];
 
   constructor(
+    seed = "",
     private readonly maxBuffer = 140,
-  ) {}
+  ) {
+    // 跨轮去重：把上一轮回复里"有分量"的句子先记进来。
+    // 只收够长的句子——「要不要试试？」这类衔接语重复出现是自然的，
+    // 但"床和睡觉的关系会重新建立起来"这种整句连着说两遍就很机械。
+    for (const seg of sentences(seed)) {
+      const key = dedupKey(seg);
+      if (key.length >= CONTAIN_MIN) this.seen.push(key);
+    }
+  }
 
   /** 返回可以安全发出去的内容。 */
   feed(chunk: string): string {
@@ -136,7 +201,49 @@ export class StreamScrubber {
   private clean(seg: string): string {
     const { text, violations } = scrub(seg);
     this.violations.push(...violations);
+    return this.dedup(text);
+  }
+
+  /** 已经说过的句子不再发第二遍。 */
+  private dedup(text: string): string {
+    if (!text) return text;
+    const key = dedupKey(text);
+
+    // 纯空白/纯标点：控制连续换行不超过 2 个。
+    // 否则丢掉一句之后，原来那句前后的 \n\n 会拼成一片空白。
+    if (!key) {
+      const newlines = (text.match(/\n/g) ?? []).length;
+      if (newlines === 0) return "";
+      const allow = Math.max(0, MAX_TAIL_NEWLINES - this.tailNl);
+      const emit = "\n".repeat(Math.min(newlines, allow));
+      this.tailNl += emit.length;
+      return emit;
+    }
+
+    if (key.length < EXACT_MIN) {
+      this.tailNl = 0;
+      return text;
+    }
+
+    if (this.isRepeat(key)) {
+      this.violations.push("repeat");
+      return "";
+    }
+
+    this.seen.push(key);
+    this.tailNl = 0;
     return text;
+  }
+
+  private isRepeat(key: string): boolean {
+    for (const prev of this.seen) {
+      if (key === prev) return true;
+      const short = key.length <= prev.length ? key : prev;
+      const long = key.length <= prev.length ? prev : key;
+      if (short.length >= CONTAIN_MIN && long.includes(short)) return true;
+      if (short.length >= SIMILAR_MIN && similarity(key, prev) >= SIMILAR_RATIO) return true;
+    }
+    return false;
   }
 }
 

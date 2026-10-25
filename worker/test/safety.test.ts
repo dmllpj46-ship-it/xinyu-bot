@@ -151,3 +151,106 @@ describe("输出护栏", () => {
     expect(s.flush()).toBe("没有句号的尾巴");
   });
 });
+
+// ── 重复句去重 ────────────────────────────────────────────
+// 模型会把同一句话说两遍（一次先共情，工具回来后重新开头）。
+// 提示词压不到零，所以输出侧做硬去重。
+
+describe("重复句去重", () => {
+  it("完全重复只留一次", () => {
+    const { text, violations } = scrubText(
+      "这种拧着的感觉最磨人。\n\n这种拧着的感觉最磨人。\n\n先确认一下：你是睡不着还是容易醒？",
+    );
+    expect(violations).toContain("repeat");
+    expect(text.split("这种拧着的感觉最磨人").length - 1).toBe(1);
+    expect(text).toContain("先确认一下");
+  });
+
+  it("包含关系也算重复", () => {
+    const long = "先确认一下：你是躺下睡不着，还是睡着了但半夜醒？这两种处理不太一样。";
+    const short = "先确认一下：你是躺下睡不着，还是睡着了但半夜醒？";
+    const { text, violations } = scrubText(`${long}\n\n${short}`);
+    expect(violations).toContain("repeat");
+    expect(text.split("先确认一下").length - 1).toBe(1);
+  });
+
+  it("短句重复也拦", () => {
+    const { text, violations } = scrubText("要不要试试？\n\n要不要试试？");
+    expect(violations).toContain("repeat");
+    expect(text.split("要不要试试").length - 1).toBe(1);
+  });
+
+  it("丢句后不留多余空行", () => {
+    const { text } = scrubText("A 句在这里。\n\nA 句在这里。\n\n下一段。");
+    expect(text).not.toContain("\n\n\n");
+    expect(text).toBe("A 句在这里。\n\n下一段。");
+  });
+
+  it("意思不同、只是用词接近的句子不误杀", () => {
+    const src =
+      "先确认一下：你是躺下睡不着，还是睡着了但半夜醒？\n\n" +
+      "如果是入睡困难，今晚可以先试一件小事：躺下 20 分钟还清醒就起来。";
+    const { text, violations } = scrubText(src);
+    expect(violations).toEqual([]);
+    expect(text).toBe(src);
+  });
+
+  it("正常回复不受影响", () => {
+    const src =
+      "白天被催着，躺下了那股劲还没散。\n\n" +
+      "先确认一下：你是躺下半天睡不着，还是睡着了又反复醒？\n\n" +
+      "今晚可以先试一件小事：躺下 20 分钟还清醒就起来。要不要试试？";
+    const { text, violations } = scrubText(src);
+    expect(violations).toEqual([]);
+    expect(text).toBe(src);
+  });
+});
+
+// ── 词表漏洞回归 ──────────────────────────────────────────
+describe("无意义表达的变体", () => {
+  // 「没什么意思」中间夹了「什么」，早先的正则匹配不到——这是漏报
+  const cases = ["我觉得活着没什么意思", "生活没什么意义了", "活着没意思", "一切都没有意义"];
+  for (const message of cases) {
+    it(`「${message}」至少判 L1`, () => {
+      expect(assess(message).level).toBeGreaterThanOrEqual(1);
+    });
+  }
+});
+
+// ── Markdown 标记清理 ────────────────────────────────────
+// 前端按纯文本渲染，`**` 和 `#` 会原样露出来。
+describe("Markdown 标记清理", () => {
+  it("去掉加粗标记但保留文字", () => {
+    const { text, violations } = scrubText("**上海市心理热线**是 12356。");
+    expect(text).not.toContain("**");
+    expect(text).toContain("上海市心理热线");
+    expect(violations).toEqual([]);
+  });
+
+  it("去掉标题井号", () => {
+    const { text } = scrubText("## 今晚可以试的\n\n躺下 20 分钟还清醒就起来。");
+    expect(text).not.toContain("##");
+    expect(text).toContain("今晚可以试的");
+  });
+});
+
+// ── 跨轮去重 ────────────────────────────────────────────
+// 两段相邻气泡说同一句话，比一段里重复更出戏。
+describe("跨轮去重", () => {
+  it("上一轮说过的整句不再出现", () => {
+    const prev =
+      "躺下 20 分钟还清醒，就起来到暗一点的地方坐会儿，有困意再回床。这样反复几次，床和睡觉的关系会重新建立起来。";
+    const s = new StreamScrubber(prev);
+    const out = s.feed("别硬躺，起来做点别的。这样反复几次，床和睡觉的关系会重新建立起来。");
+    expect(out).not.toContain("床和睡觉的关系会重新建立起来");
+    expect(out).toContain("别硬躺");
+    expect(s.violations).toContain("repeat");
+  });
+
+  it("短的衔接语允许跨轮重复", () => {
+    const s = new StreamScrubber("今晚可以先试一件小事。要不要试试？");
+    const out = s.feed("那就先做这一件。要不要试试？");
+    expect(out).toContain("要不要试试");
+    expect(s.violations).not.toContain("repeat");
+  });
+});

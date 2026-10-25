@@ -1,0 +1,104 @@
+<Slide style={{ width: 1280, height: 720, background: '#FBF7F2', padding: 0, position: 'relative', fontFamily: "'Noto Sans SC', system-ui, sans-serif" }}>
+
+    {/* ── A 区 · 标题块 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 46, flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+        <Box style={{ width: 4, height: 30, background: '#C0765C' }} />
+        <Text style={{ fontSize: 36, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.3 }}>
+            一套业务，两个运行时
+        </Text>
+    </Box>
+
+    {/* ── B 区上 · 架构图（占 48%） ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 130, width: 1136, height: 258 }}>
+
+        {/* 连线层（纯线条，无文字） */}
+        <svg width={1136} height={258} viewBox='0 0 1136 258' style={{ position: 'absolute', top: 0, left: 0 }}>
+            <g fill='none' stroke='#6E7C8C' strokeWidth='1.5' opacity='0.45'>
+                <path d='M170 130 L215 130' />
+                <path d='M215 78 L215 182' />
+                <path d='M215 78 L240 78' />
+                <path d='M215 182 L240 182' />
+                <path d='M660 78 L700 78 L700 130' />
+                <path d='M660 182 L700 182 L700 130' />
+                <path d='M700 130 L730 130' />
+            </g>
+            <g fill='none' stroke='#C0765C' strokeWidth='3' opacity='0.85'>
+                <path d='M900 130 L966 130' />
+            </g>
+            <path d='M958 124 L968 130 L958 136' fill='none' stroke='#C0765C' strokeWidth='3' />
+        </svg>
+
+        {/* 浏览器（共用，唯一用陶土描边的节点） */}
+        <Box style={{ position: 'absolute', left: 0, top: 66, width: 170, height: 128, background: 'rgba(192,118,92,0.10)', border: '2px solid #C0765C', borderRadius: 6, padding: 16, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.35 }}>浏览器</Text>
+            <Text style={{ fontSize: 14, color: '#C0765C', marginTop: 4, lineHeight: 1.5 }}>web/ · 单页无构建</Text>
+            <Text style={{ fontSize: 13, color: 'rgba(46,42,39,0.58)', marginTop: 8, lineHeight: 1.55 }}>两个运行时<br />共用同一份</Text>
+        </Box>
+
+        {/* 两个运行时 */}
+        <Box style={{ position: 'absolute', left: 240, top: 36, width: 420, height: 84, background: 'rgba(110,124,140,0.10)', border: '1.5px solid rgba(110,124,140,0.55)', borderRadius: 6, padding: 15, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 19, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.35 }}>本地版 · FastAPI</Text>
+            <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.62)', marginTop: 5, lineHeight: 1.5 }}>app/main.py · Python 3.13 · openai-agents 0.24</Text>
+        </Box>
+
+        <Box style={{ position: 'absolute', left: 240, top: 140, width: 420, height: 84, background: 'rgba(110,124,140,0.10)', border: '1.5px solid rgba(110,124,140,0.55)', borderRadius: 6, padding: 15, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 19, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.35 }}>生产版 · Cloudflare Worker</Text>
+            <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.62)', marginTop: 5, lineHeight: 1.5 }}>worker/src/index.ts · TypeScript · @openai/agents 0.21</Text>
+        </Box>
+
+        {/* 模型 */}
+        <Box style={{ position: 'absolute', left: 730, top: 66, width: 170, height: 128, background: 'rgba(110,124,140,0.16)', border: '1.5px solid rgba(110,124,140,0.55)', borderRadius: 6, padding: 16, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.35 }}>Mercury 3</Text>
+            <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.62)', marginTop: 4, lineHeight: 1.5 }}>Chat Completions</Text>
+            <Text style={{ fontSize: 13, color: 'rgba(46,42,39,0.55)', marginTop: 8, lineHeight: 1.55 }}>1M 上下文<br />纯文本 · 块式流式</Text>
+        </Box>
+
+        {/* 工具 */}
+        <Box style={{ position: 'absolute', left: 970, top: 66, width: 166, height: 128, background: 'rgba(110,124,140,0.10)', border: '1.5px solid rgba(110,124,140,0.55)', borderRadius: 6, padding: 16, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.35 }}>三个工具</Text>
+            <Text style={{ fontSize: 13, color: 'rgba(46,42,39,0.62)', marginTop: 6, lineHeight: 1.7 }}>kb_search<br />web_search<br />crisis_resources</Text>
+        </Box>
+
+    </Box>
+
+    {/* ── B 区下 · 两张不等宽卡片 ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 410, width: 1136, height: 228, flexDirection: 'row', gap: 28 }}>
+
+        <Box style={{ width: 636, background: 'rgba(110,124,140,0.07)', padding: 26, justifyContent: 'space-between' }}>
+            <Box>
+                <Text style={{ fontSize: 12, letterSpacing: '0.16em', color: '#6E7C8C', marginBottom: 10 }}>SHARED · 一份</Text>
+                <Text style={{ fontSize: 23, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.4 }}>
+                    前端、提示词、知识库
+                </Text>
+                <Text style={{ fontSize: 17, color: 'rgba(46,42,39,0.80)', lineHeight: 1.7, marginTop: 12 }}>
+                    web/ 的 HTML / CSS / JS 只有一份；system.md 与 knowledge/ 也只有一份。改文案、改语气、加一篇文档，只改一处，两个运行时同时生效。
+                </Text>
+            </Box>
+            <Text style={{ fontSize: 15, color: '#6E7C8C', marginTop: 14 }}>改动成本：1 次</Text>
+        </Box>
+
+        <Box style={{ flex: 1, background: 'rgba(192,118,92,0.09)', padding: 26, justifyContent: 'space-between' }}>
+            <Box>
+                <Text style={{ fontSize: 12, letterSpacing: '0.16em', color: '#C0765C', marginBottom: 10 }}>MIRRORED · 两套</Text>
+                <Text style={{ fontSize: 23, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.4 }}>
+                    safety/ 与 tools/
+                </Text>
+                <Text style={{ fontSize: 17, color: 'rgba(46,42,39,0.80)', lineHeight: 1.7, marginTop: 12 }}>
+                    词表、分级、护栏、危机话术、三个工具，两边各写一遍。改红线必须改两处，靠两端测试对齐行为。
+                </Text>
+            </Box>
+            <Text style={{ fontSize: 15, color: '#C0765C', marginTop: 14 }}>改动成本：2 次 + 两轮测试</Text>
+        </Box>
+
+    </Box>
+
+    {/* ── C 区 · 页脚条 ── */}
+    <Box style={{ position: 'absolute', left: 72, bottom: 22, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Box style={{ width: 6, height: 6, borderRadius: 3, background: '#C0765C' }} />
+        <Text style={{ fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>心屿 · 技术分析</Text>
+    </Box>
+    <Text style={{ position: 'absolute', right: 72, bottom: 22, fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>
+        03 / 10
+    </Text>
+
+</Slide>

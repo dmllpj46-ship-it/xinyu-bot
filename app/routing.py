@@ -1,0 +1,170 @@
+"""轮次路由：决定这一轮要不要检索、检索哪一边。
+
+## 为什么需要路由
+
+压力大的人对延迟极度敏感。一次检索要付两份钱：多一轮模型调用 + 一次外部请求，
+实测在 1.5–3 秒之间。而绝大多数轮次其实不需要检索——接一句情绪、答一个常识问题，
+模型自己就够了。反过来，涉及政策、本地机构、时事的问题，不联网就只能瞎编。
+
+所以每轮先判一次，**只挂必要的工具**。判错的代价是不对称但都可接受：
+
+- 该检索没检索 → 答得浅一点，不会说错；
+- 不该检索却检索 → 只损失速度。
+
+## 四种模式
+
+| mode | 挂哪些工具 | 典型输入 |
+|---|---|---|
+| `crisis` | 不调模型，脚本兜底 | 自伤/自杀信号（L2/L3） |
+| `chat` | 无检索工具 | 「嗯」「谢谢」「我今天特别累」 |
+| `kb` | `kb_search` | 「睡不着怎么办」「怎么拒绝同事」 |
+| `web` | `web_search` | 「最近有什么补贴政策」「哪有免费咨询」 |
+
+## 为什么不用 LLM 判定
+
+和 input_guard 同理：每多 500ms 都是代价，而这里判错只影响速度或深度，
+不影响安全。安全那条线由 input_guard 单独负责，不归这里管。
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Literal
+
+from app.safety.input_guard import GuardDecision
+from app.safety.lexicon import normalize
+
+Mode = Literal["crisis", "chat", "kb", "web"]
+
+# ── 联网信号 ────────────────────────────────────────────────
+# 时效性词单独出现不够：中文里「最近」「现在」几乎无处不在（"我最近很累"），
+# 必须和一个"会随时间变的东西"（政策或具体资源）同时出现才算联网请求。
+_WEB_FRESH = re.compile(
+    r"最新|最近|近期|今年|明年|去年|目前|现在|这两天|这几天|这阵子|"
+    r"新闻|报道|出台了|刚发布|新规"
+)
+# 制度性：政策、钱、报销。这类词本身就说明要外部信息，可以单独成立。
+_WEB_POLICY = re.compile(r"政策|规定|条例|法规|医保|报销|补贴|纳入|收费标准|多少钱|费用|价格")
+# 地域性：必须和资源名词同时出现，否则「我这边压力好大」会被误判
+_WEB_LOCAL = re.compile(
+    r"北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|长沙|郑州|青岛|"
+    r"我这边|本地|当地|附近|周边|哪里|哪儿|哪家"
+)
+_WEB_RESOURCE = re.compile(
+    r"医院|机构|门诊|咨询|援助|热线|资源|预约|挂号|医生|心理科|精神科|服务中心|"
+    r"平台|APP|app|小程序|公众号"
+)
+# 机构类：问「靠不靠谱」本身就需要外部信息
+_WEB_INSTITUTION = re.compile(r"机构|靠谱|正规|资质|认证|哪家好")
+
+# ── 知识库信号 ──────────────────────────────────────────────
+# 主题名词是最强信号：出现就说明这条消息落在知识库覆盖的范围内。
+# 但要有一定长度——「我这边压力好大」这种纯情绪短句，模型自己就能接住，不必检索。
+_KB_TOPIC = re.compile(
+    r"失眠|睡不着|入睡|早醒|多梦|噩梦|睡眠|"
+    r"焦虑|恐慌|惊恐|抑郁|低落|情绪|压力|内耗|反刍|胡思乱想|"
+    r"拖延|注意力|专注|procrastinat|"
+    r"心慌|心悸|手抖|出汗|胸闷|躯体|头痛|胃|食欲|"
+    r"社交|沟通|拒绝|边界|完美主义|自责|羞耻|内疚|"
+    r"悲伤|难过|哀伤|丧失|去世|分手|离婚|失恋|"
+    r"失业|裁员|考试|绩效|加班|领导|同事|"
+    r"父母|孩子|伴侣|婚姻|原生家庭|创伤|成瘾|手机|游戏"
+)
+# 求方法：强信号本身就说明「我要一个办法」，没有歧义，不需要长度门槛
+_KB_ASK_STRONG = re.compile(
+    r"怎么办|咋办|怎么才能|怎么才|如何|有什么办法|有没有办法|"
+    r"方法|技巧|练习|该不该|要不要|是不是|正常吗|算不算"
+)
+# 弱信号：单个「怎么」「多久」在情绪表达里也很常见（"我怎么这么累"），
+# 需要配一点上下文长度才认定是在求方法
+_KB_ASK_WEAK = re.compile(r"怎么|多久|为什么")
+
+_KB_TOPIC_MIN = 12  # 主题名词成立所需的最短长度
+_KB_ASK_WEAK_MIN = 10  # 弱求方法信号成立所需的最短长度
+
+# ── 路由指令（追加到 system prompt 的 <this_turn> 里）─────────
+_DIRECTIVES: dict[Mode, str] = {
+    "chat": (
+        "【本轮路由 · 不检索】这一轮不需要查知识库，也不需要联网。"
+        "直接用常识和共情回应。不要提「知识库」「资料」，不要列方法清单。"
+        "控制在 120 字以内，让对方愿意继续说下去。"
+    ),
+    "kb": (
+        "【本轮路由 · 本地知识库】调用 kb_search **一次**即可，然后用检索结果回答。"
+        "一次没查到就直接用常识回答，**不要换关键词反复查**——每多查一次，对方就多等两秒。"
+    ),
+    "web": (
+        "【本轮路由 · 联网】必须调用 web_search **一次**，基于搜索结果回答。"
+        "要说明这是网络信息、可能不准确。"
+        "**不要转述搜索结果里的电话号码**，号码只能来自 crisis_resources。"
+        "只采用中国大陆的官方来源（.gov.cn、卫健委、医保局）；"
+        "港澳台地区的信息不要采用，提到时一律写「中国台湾」「中国香港」「中国澳门」。"
+        "搜索关键词里带上「中国大陆」或用户所在城市，命中率会明显提高。"
+    ),
+    "crisis": "",
+}
+
+
+@dataclass(frozen=True)
+class TurnPlan:
+    mode: Mode
+    tools: tuple[str, ...]
+    directive: str
+    reason: str
+
+
+def _web_signal(text: str) -> str:
+    # 政策/机构类可以单独成立
+    if _WEB_POLICY.search(text):
+        return "policy"
+    if _WEB_INSTITUTION.search(text):
+        return "institution"
+    # 地域 + 资源
+    if _WEB_LOCAL.search(text) and _WEB_RESOURCE.search(text):
+        return "local"
+    # 时效性必须配一个"会变的东西"，否则「我最近很累」会被误判成联网
+    if _WEB_FRESH.search(text) and (_WEB_RESOURCE.search(text) or _WEB_POLICY.search(text)):
+        return "fresh"
+    return ""
+
+
+def _kb_signal(text: str) -> str:
+    if _KB_ASK_STRONG.search(text):
+        return "ask"
+    if _KB_ASK_WEAK.search(text) and len(text) >= _KB_ASK_WEAK_MIN:
+        return "ask-weak"
+    if _KB_TOPIC.search(text) and len(text) >= _KB_TOPIC_MIN:
+        return "topic"
+    return ""
+
+
+def plan(message: str, decision: GuardDecision) -> TurnPlan:
+    """给出这一轮的模式、工具集与追加指令。"""
+    if decision.level >= 2:
+        return TurnPlan("crisis", (), "", f"level={decision.level}")
+
+    text = normalize(message)
+
+    # 联网优先于知识库：需要外部信息时，本地库帮不上忙
+    web = _web_signal(text)
+    kb = _kb_signal(text)
+
+    if web:
+        mode: Mode = "web"
+        tools = ["web_search"]
+        reason = f"web:{web}"
+    elif kb:
+        mode = "kb"
+        tools = ["kb_search"]
+        reason = f"kb:{kb}"
+    else:
+        mode = "chat"
+        tools = []
+        reason = "no-retrieval-signal"
+
+    # L1（情绪高危）必须能给出热线，所以额外挂 crisis_resources
+    if decision.level == 1:
+        tools.append("crisis_resources")
+
+    return TurnPlan(mode, tuple(tools), _DIRECTIVES[mode], reason)

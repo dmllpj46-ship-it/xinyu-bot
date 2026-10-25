@@ -174,3 +174,107 @@ def test_stream_scrubber_flush() -> None:
     s = StreamScrubber()
     s.feed("没有句号的尾巴")
     assert s.flush() == "没有句号的尾巴"
+
+
+# ── 重复句去重 ────────────────────────────────────────────
+# 模型会把同一句话说两遍（一次先共情，工具回来后重新开头）。
+# 提示词压不到零，所以输出侧做硬去重。
+
+
+def test_exact_repeat_dropped() -> None:
+    src = "这种拧着的感觉最磨人。\n\n这种拧着的感觉最磨人。\n\n先确认一下：你是睡不着还是容易醒？"
+    text, bad = scrub_text(src)
+    assert "repeat" in bad
+    assert text.count("这种拧着的感觉最磨人") == 1
+    assert "先确认一下" in text
+
+
+def test_contained_repeat_dropped() -> None:
+    long = "先确认一下：你是躺下睡不着，还是睡着了但半夜醒？这两种处理不太一样。"
+    short = "先确认一下：你是躺下睡不着，还是睡着了但半夜醒？"
+    text, bad = scrub_text(f"{long}\n\n{short}")
+    assert "repeat" in bad
+    assert text.count("先确认一下") == 1
+
+
+def test_short_repeat_dropped() -> None:
+    text, bad = scrub_text("要不要试试？\n\n要不要试试？")
+    assert "repeat" in bad
+    assert text.count("要不要试试") == 1
+
+
+def test_paragraph_break_collapsed_after_drop() -> None:
+    """丢句之后不能留下三四行空白。"""
+    text, _ = scrub_text("A 句在这里。\n\nA 句在这里。\n\n下一段。")
+    assert "\n\n\n" not in text
+    assert text == "A 句在这里。\n\n下一段。"
+
+
+def test_similar_but_distinct_kept() -> None:
+    """意思不同、只是用词接近的句子不能被误杀。"""
+    src = (
+        "先确认一下：你是躺下睡不着，还是睡着了但半夜醒？\n\n"
+        "如果是入睡困难，今晚可以先试一件小事：躺下 20 分钟还清醒就起来。"
+    )
+    text, bad = scrub_text(src)
+    assert bad == []
+    assert text == src
+
+
+def test_normal_reply_untouched_by_dedup() -> None:
+    src = (
+        "白天被催着，躺下了那股劲还没散。\n\n"
+        "先确认一下：你是躺下半天睡不着，还是睡着了又反复醒？\n\n"
+        "今晚可以先试一件小事：躺下 20 分钟还清醒就起来。要不要试试？"
+    )
+    text, bad = scrub_text(src)
+    assert bad == []
+    assert text == src
+
+
+# ── 词表漏洞回归 ──────────────────────────────────────────
+@pytest.mark.parametrize(
+    "message",
+    ["我觉得活着没什么意思", "生活没什么意义了", "活着没意思", "一切都没有意义"],
+)
+def test_meaninglessness_variants_detected(message: str) -> None:
+    """「没什么意思」中间夹了「什么」，早先的正则匹配不到——这是漏报。"""
+    assert assess(message).level >= 1
+
+
+# ── Markdown 标记清理 ────────────────────────────────────
+# 前端按纯文本渲染，`**` 和 `#` 会原样露出来。
+
+
+def test_markdown_bold_stripped() -> None:
+    text, bad = scrub_text("**上海市心理热线**是 12356。")
+    assert "**" not in text
+    assert "上海市心理热线" in text
+    assert bad == []
+
+
+def test_markdown_heading_stripped() -> None:
+    text, _ = scrub_text("## 今晚可以试的\n\n躺下 20 分钟还清醒就起来。")
+    assert "##" not in text
+    assert "今晚可以试的" in text
+
+
+# ── 跨轮去重 ────────────────────────────────────────────
+# 两段相邻气泡说同一句话，比一段里重复更出戏。
+
+
+def test_seed_drops_repeat_from_previous_turn() -> None:
+    prev = "躺下 20 分钟还清醒，就起来到暗一点的地方坐会儿，有困意再回床。这样反复几次，床和睡觉的关系会重新建立起来。"
+    s = StreamScrubber(seed=prev)
+    out = s.feed("别硬躺，起来做点别的。这样反复几次，床和睡觉的关系会重新建立起来。")
+    assert "床和睡觉的关系会重新建立起来" not in out
+    assert "别硬躺" in out
+    assert "repeat" in s.violations
+
+
+def test_seed_keeps_short_conversational_glue() -> None:
+    """「要不要试试？」这类衔接语重复出现是自然的，不能因为跨轮就删掉。"""
+    s = StreamScrubber(seed="今晚可以先试一件小事。要不要试试？")
+    out = s.feed("那就先做这一件。要不要试试？")
+    assert "要不要试试" in out
+    assert "repeat" not in s.violations

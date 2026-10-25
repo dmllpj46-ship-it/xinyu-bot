@@ -68,15 +68,17 @@
 
 | 改动 | 必须同步 |
 |---|---|
+| `routing`（轮次路由：信号词、指令文案） | 两边逐条对齐。**判错的代价是延迟或深度，不是安全**，但漂移会让两个运行时表现不一致，用户换端就发现"它变笨了" |
 | `safety/lexicon`（词表、正则） | 两边逐条对齐，正则标志位注意 `g` + `matchAll` |
 | `safety/inputGuard`（分级、指令文案） | 指令文案是 prompt 的一部分，改一个字两边都要改 |
-| `safety/outputGuard`（白名单、替换句） | `ALLOWED_NUMBERS` 必须与 `tools/crisis` 的号码集合一致，两边都有测试守着 |
+| `safety/outputGuard`（白名单、替换句、去重阈值） | `ALLOWED_NUMBERS` 必须与 `tools/crisis` 的号码集合一致；去重阈值（`EXACT_MIN`/`CONTAIN_MIN`/`SIMILAR_MIN`/`SIMILAR_RATIO`）两边必须同值，否则同一段回复在两端删的句子不一样 |
 | `safety/crisisScript`（L2/L3 话术） | 这是**用户在最脆弱时刻看到的全部文字**，不允许只有一边更新 |
 | `tools/crisis`（热线表） | 号码错一位就是事故 |
+| `tools/web_search`（联网搜索） | 请求体必须一致：**都不带 `tag`**。带 tag 会 400（见 README §3.2），一端改一端不改，就会出现"线上能搜、本地不能搜" |
 | `prompts/system.md` | Worker 侧由 `npm run kb` 编译进 `generated/prompt.ts`，**改完必须重跑** |
 | `knowledge/*.md` | 本地跑 `ingest_kb.py`，Worker 跑 `build-kb.mjs` |
 
-判断标准：**改完之后，同一条输入在两个运行时上应该得到同一个分级、同一段危机话术。**
+判断标准：**改完之后，同一条输入在两个运行时上应该得到同一个分级、同一段危机话术、同一个 mode。**
 做不到就先补测试，别急着上线。
 
 ### 2.4 daisyUI 的边界（别越界）
@@ -189,7 +191,8 @@ node scripts/screenshot.mjs --url http://127.0.0.1:8787/ --out docs/shot.png --w
 | 路径 | 职责 | 修改注意 |
 |---|---|---|
 | `app/main.py` | 路由、SSE 帧格式、错误兜底 | 改 SSE 协议要同步改 `web/app.js` **和** `worker/src/index.ts` |
-| `app/agent.py` | Agent 装配、Session、Runner | 工具注册表在此，加工具要同时更新 `TOOLS` 列表 |
+| `app/agent.py` | Agent 装配、Session、Runner | 工具按 `TurnPlan.tools` 挂载，注册表 `_TOOLS` 的键名必须与 routing 里的字符串一致 |
+| `app/routing.py` / `worker/src/routing.ts` | 轮次路由：要不要检索、检索哪一边 | **延迟预算的守门人**。加一个信号词 = 一批消息多等两秒，加之前先想清楚（README §3.1） |
 | `worker/src/index.ts` | Worker 路由、SSE、历史裁剪、L2/L3 早返回 | L2/L3 的分流必须**在调模型之前**，别挪到后面 |
 | `worker/src/agent.ts` | Provider / Agent / Runner 装配 | `useResponses: false` 不能删 |
 | `app/prompts/system.md` | 人格、语气、输出结构、红线复述 | **纯文本文件**；Worker 侧由 `npm run kb` 编译，改完两边都要验 |

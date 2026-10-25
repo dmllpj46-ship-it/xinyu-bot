@@ -1,0 +1,70 @@
+<Slide style={{ width: 1280, height: 720, background: '#FBF7F2', padding: 0, position: 'relative', fontFamily: "'Noto Sans SC', system-ui, sans-serif" }}>
+
+    {/* 背景暖色光晕（极淡，只托住数字） */}
+    <Box style={{ position: 'absolute', left: -60, top: 150, width: 520, height: 520, borderRadius: 260, background: 'rgba(192,118,92,0.07)' }} />
+
+    {/* ── A 区 · 小标题（hero 页不放大标题，用 eyebrow 代替） ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 52, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+        <Box style={{ width: 4, height: 26, background: '#C0765C' }} />
+        <Text style={{ fontSize: 15, letterSpacing: '0.18em', color: '#6E7C8C' }}>KEY FINDING · 2026-10-25 实测</Text>
+    </Box>
+
+    {/* ── 左 · 巨型数字（视觉锚点） ── */}
+    <Box style={{ position: 'absolute', left: 72, top: 176, width: 400 }}>
+        <Text style={{ fontSize: 190, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#C0765C', lineHeight: 1.0, letterSpacing: '-0.04em' }}>
+            0
+        </Text>
+        <Text style={{ fontSize: 21, fontWeight: 'bold', color: '#2E2A27', lineHeight: 1.5, marginTop: 6 }}>
+            危机路径调用模型的次数
+        </Text>
+        <Box style={{ width: 56, height: 3, background: '#C0765C', marginTop: 20, marginBottom: 18 }} />
+        <Text style={{ fontSize: 16, color: 'rgba(46,42,39,0.62)', lineHeight: 1.75 }}>
+            L2 / L3 两级完全不经过模型。<br />
+            不是优化，是唯一可行的做法。
+        </Text>
+    </Box>
+
+    {/* ── 右 · 证据 + 判断 ── */}
+    <Box style={{ position: 'absolute', left: 552, top: 152, width: 656 }}>
+
+        <Text style={{ fontSize: 22, color: 'rgba(46,42,39,0.85)', lineHeight: 1.65, marginBottom: 22 }}>
+            用户说「我真的不想活了，已经想好怎么做了」，<br />
+            Mercury 3 的 API 层返回的不是回复，是这句话：
+        </Text>
+
+        <Box style={{ borderLeft: '3px solid #C0765C', background: 'rgba(110,124,140,0.09)', padding: 22, paddingLeft: 24 }}>
+            <Text style={{ fontSize: 17, fontFamily: "'Noto Sans SC', sans-serif", color: 'rgba(46,42,39,0.78)', lineHeight: 1.7 }}>
+                I'm sorry, but I can't help with this because it involves potentially dangerous or harmful content.
+            </Text>
+            <Text style={{ fontSize: 14, color: '#6E7C8C', marginTop: 10, lineHeight: 1.5 }}>
+                — Inception API · 原始拒答响应
+            </Text>
+        </Box>
+
+        <Text style={{ fontSize: 24, fontWeight: 'bold', fontFamily: "'Noto Serif SC', Georgia, serif", color: '#2E2A27', lineHeight: 1.5, marginTop: 26 }}>
+            最需要它说话的时刻，模型会闭嘴。
+        </Text>
+
+        <Text style={{ fontSize: 17, color: 'rgba(46,42,39,0.78)', lineHeight: 1.75, marginTop: 12 }}>
+            于是危机回复改成确定性的：话术写死在代码里，号码只从常量表取。代价是失去个性化，但危机当下，稳定 &gt; 贴切。
+        </Text>
+
+        <Box style={{ flexDirection: 'row', gap: 10, marginTop: 24 }}>
+            <Box style={{ background: 'rgba(192,118,92,0.12)', borderRadius: 14, paddingTop: 7, paddingBottom: 7, paddingLeft: 16, paddingRight: 16 }}>
+                <Text style={{ fontSize: 14, color: '#C0765C' }}>话术写死</Text>
+            </Box>
+            <Box style={{ background: 'rgba(192,118,92,0.12)', borderRadius: 14, paddingTop: 7, paddingBottom: 7, paddingLeft: 16, paddingRight: 16 }}>
+                <Text style={{ fontSize: 14, color: '#C0765C' }}>号码来自常量表</Text>
+            </Box>
+            <Box style={{ background: 'rgba(110,124,140,0.14)', borderRadius: 14, paddingTop: 7, paddingBottom: 7, paddingLeft: 16, paddingRight: 16 }}>
+                <Text style={{ fontSize: 14, color: '#6E7C8C' }}>牺牲个性化</Text>
+            </Box>
+        </Box>
+
+    </Box>
+
+    <Text style={{ position: 'absolute', right: 72, bottom: 22, fontSize: 14, color: 'rgba(46,42,39,0.45)', letterSpacing: '0.04em' }}>
+        04 / 10
+    </Text>
+
+</Slide>

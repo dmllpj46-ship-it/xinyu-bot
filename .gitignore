@@ -15,3 +15,8 @@ worker/src/generated/
 
 # 本地 agent 工作记录，不属于项目内容
 .workbuddy-ai/
+
+# 幻灯片预览产物（开发用，非交付物）
+docs/**/preview/
+docs/**/.cache/
+docs/**/.slidep/
