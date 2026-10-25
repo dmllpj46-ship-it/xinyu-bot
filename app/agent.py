@@ -19,8 +19,9 @@ Mercury 3 的三个适配点（改之前先看 AGENTS.md §3）：
 工具描述（`app/tools/*.py` 的 docstring）因此成了唯一的调度依据，写法有硬要求：
 必须写清 Use when / Do NOT use when，见 AGENTS.md §6。
 
-安全不在这里管：L2/L3 在调用模型之前就被 `input_guard` 拦下走写死话术；
-非致命家暴的"必须调 crisis_resources"写在 `decision.directive` 里。
+安全规则不在这里管（在 `input_guard`），但**"这次是开场"这个事实**必须在这里算：
+身份声明（R7）不该每轮都提一遍，也不该靠模型自己数轮次——它看不到轮次，只看得到历史。
+所以由我们判断，再通过 `<this_turn>` 注入一句，理由见 `OPENING_NOTE`。
 """
 
 from __future__ import annotations
@@ -87,26 +88,56 @@ def _build_model() -> OpenAIChatCompletionsModel:
     return OpenAIChatCompletionsModel(model=get_settings().mercury_model, openai_client=_get_client())
 
 
+# 身份声明（R7）只在开场那一次说。写进 `<role>` 是"我应该是什么样"，
+# 但模型不知道这是第几轮——把历史喂给它，它仍然可能第一轮说、第三轮又说，
+# 或者干脆忘了说（实测两种都出现过）。所以"这一轮是开场"由我们算、由我们注入。
+OPENING_NOTE = (
+    "【本轮状态 · 开场】这是对话的第一轮，对方还不知道你是谁。"
+    "在回应里用**一句自然的话**说清你是 AI 陪练（不是真人、不是咨询师），别像免责声明一样贴在开头。"
+)
+
+
+def is_opening(history_len: int) -> bool:
+    """判定"这是不是开场"。Python 版取会话里已有的条数，Worker 版取 history 长度。"""
+    return history_len == 0
+
+
+def _base_prompt() -> str:
+    return _PROMPT.read_text(encoding="utf-8")
+
+
+def _wrap(base: str, directive: str) -> str:
+    return f"{base}\n\n<this_turn>\n{directive}\n</this_turn>" if directive else base
+
+
 def system_prompt(directive: str = "") -> str:
-    base = _PROMPT.read_text(encoding="utf-8")
-    if directive:
-        return f"{base}\n\n<this_turn>\n{directive}\n</this_turn>"
-    return base
+    return _wrap(_base_prompt(), directive)
 
 
-def build_instructions(decision: GuardDecision | None = None) -> str:
-    """基础 prompt + 本轮安全指令。指令为空时不加 `<this_turn>` 包裹。"""
-    return system_prompt(decision.directive if decision else "")
+def build_instructions(
+    decision: GuardDecision | None = None, *, opening: bool = False
+) -> str:
+    """基础 prompt + 本轮状态（开场）+ 本轮安全指令。
+
+    两段拼在一起注入，空的就整段不加——指令越少，模型越不跑偏。
+    `opening` 默认 False：不确定时宁可不提，也不要每轮都说"第一次见你"。
+    """
+    parts = [
+        p
+        for p in (OPENING_NOTE if opening else "", decision.directive if decision else "")
+        if p
+    ]
+    return _wrap(_base_prompt(), "\n".join(parts))
 
 
-def build_agent(decision: GuardDecision | None = None) -> Agent:
+def build_agent(decision: GuardDecision | None = None, *, opening: bool = False) -> Agent:
     s = get_settings()
     # 危机轮次给多一点思考预算；日常对话用 low，换来更快的第一句
     effort = "medium" if (decision and decision.level >= 2) else s.mercury_reasoning_effort
 
     return Agent(
         name="心屿",
-        instructions=build_instructions(decision),
+        instructions=build_instructions(decision, opening=opening),
         model=_build_model(),
         tools=list(TOOLS),
         model_settings=ModelSettings(
@@ -133,6 +164,15 @@ def get_session(session_id: str) -> SQLiteSession:
 
 def reset_session(session_id: str) -> None:
     _sessions.pop(session_id, None)
+
+
+async def _session_len(session: SQLiteSession) -> int:
+    """会话里已有多少条。取不到就当 0（当成开场是更坏的错，所以失败时返回 1）。"""
+    try:
+        items = await session.get_items()
+    except Exception:  # 会话层出问题不该拖垮回复
+        return 1
+    return len(items or [])
 
 
 async def _last_assistant_text(session: SQLiteSession) -> str:
@@ -176,8 +216,8 @@ async def stream_reply(
         }
         return
 
-    agent = build_agent(decision)
     session = get_session(session_id)
+    agent = build_agent(decision, opening=is_opening(await _session_len(session)))
     scrubber = StreamScrubber(seed=await _last_assistant_text(session))
     tools_used: list[str] = []
 

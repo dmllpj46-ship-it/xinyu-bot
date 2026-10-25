@@ -278,3 +278,44 @@ def test_seed_keeps_short_conversational_glue() -> None:
     out = s.feed("那就先做这一件。要不要试试？")
     assert "要不要试试" in out
     assert "repeat" not in s.violations
+
+
+# ── 换个说法重讲一遍 ──────────────────────────────────────
+# 线上实录（2026-10-26 部署后第一屏就这样）：
+#   「……这两种处理方式不太一样。」
+#   下一段又接：「这两种处理不一样。」
+# 两句去标点后字符重叠很少，相似度约 0.63，过不了 0.72——原来那套阈值抓不住。
+# 这类话没有新信息，只是句尾给前一句做注脚，说第二遍就是卡带。
+
+
+def test_restated_closing_clause_dropped() -> None:
+    s = StreamScrubber()
+    out = s.feed("这两种处理方式不太一样。\n\n这两种处理不一样。\n\n先睡够再说。")
+    assert out.count("这两种") == 1
+    assert "先睡够再说" in out
+    assert "repeat" in s.violations
+
+
+def test_restatement_across_turns_dropped() -> None:
+    """上一轮结尾的注脚，这一轮不该再来一遍。"""
+    seed = "你是躺下半天睡不着，还是睡着了又反复醒？这两种处理方式不太一样。"
+    s = StreamScrubber(seed=seed)
+    out = s.feed("先别急着改作息。\n\n这两种处理不一样。\n\n今晚先只做一件事。")
+    assert "这两种处理不一样" not in out
+    assert "今晚先只做一件事" in out
+    assert "repeat" in s.violations
+
+
+def test_word_swap_restatement_dropped() -> None:
+    """同一个注脚换个词：「方式差很多」和「处理不一样」是同一件事。"""
+    s = StreamScrubber(seed="这两种处理方式不太一样。")
+    assert s.feed("这两种方式差很多。") == ""
+    assert "repeat" in s.violations
+
+
+def test_ordinary_sentences_not_fingerprinted_as_restatement() -> None:
+    """反面对照：普通句子没有重述指纹，不能互相判重。"""
+    s = StreamScrubber()
+    out = s.feed("今晚早点睡。明天早点起。别把活儿带到床上。")
+    assert "今晚早点睡" in out and "明天早点起" in out and "别把活儿带到床上" in out
+    assert "repeat" not in s.violations

@@ -83,6 +83,70 @@ SIMILAR_RATIO = 0.72
 MAX_TAIL_NEWLINES = 2  # 连续空行上限，对应一个段落间隔
 
 
+# 「这两种处理方式不太一样」「这个和那个的区别在于」——纯重述，没有新信息。
+# 把指示词和"不同/一样"这一类判定词剥掉，剩下的骨架如果撞了，就是同一件事说了两遍。
+# 只剥"指示词 → 判定词"这一段模式，不做逐词替换。
+# 逐词剥会把整句掏空：「这两种处理不一样」剥完剩空串，反而永远撞不上。
+_SKELETON_PATTERN = re.compile(
+    r"(?:这两|那两|两|这|那)(?:种|个|类|方面|件事)?"
+    r"(?:的)?"
+    r"(?:处理|情况|方式|东西|做法|问题)?"
+    r"(?:方式|方法|做法|处理|情况|东西)?"
+    r"(?:其实|也|确实|可能|就)?"
+    # ⚠️ 这一段必须有，前面的全部可选。曾经全可选 → 正则能匹配空串，
+    # `subn` 会对每个位置插一次删除，`n` 永远非 0，骨架判断形同虚设。
+    r"(?:不太?一样|不一样|完全不同|不同|不太?同|差不多|类似|有区别|有差别|差很多)"
+)
+SKELETON_MIN = 4
+
+
+def _skeleton(key: str) -> str:
+    """一句「说明性重述」的骨架；不像重述就返回空串，不参与判重。
+
+    「这两种处理方式不太一样」和「这两种处理不一样」是同义重述，
+    但去标点后字符重叠很少，相似度只有 0.6 左右，过不了 0.72 的阈值。
+    这里把"这两X XX不一样"这一整块剥掉，剩下的骨架如果相同，就认定是重述。
+
+    两个必须同时满足的条件：
+    - 句子里确实有"这两X…不同/一样"这类重述块（不认识就不判，交给相似度）
+    - 剥完还剩 ≥ SKELETON_MIN 个字且有中文——**整句就是"这两种处理不一样"的，
+      骨架是空的，它本身只是句尾评注，不构成"说了两件事"，不该拿来判重**
+    """
+    body, n = _SKELETON_PATTERN.subn("", key)
+    if n == 0:
+        return ""  # 没有重述特征，交给相似度那两条判断
+    if len(body) < SKELETON_MIN:
+        return ""  # 剥完只剩"这两种处理不一样"——整句就是重述，不算比较对象
+    if not re.search(r"[\u4e00-\u9fff]", body):
+        return ""
+    return body
+
+
+# 「这两种处理不一样」「这个和那个的区别在于」——整句就是一个指示词 + 判定词，
+# 它本身不承载信息，只可能在句尾给前一句做注脚。这类句子按**归一化后的指代词形**判重：
+# 「这两种处理方式不太一样」和「这两种处理不一样」指向同一个注脚，说第二遍就是卡带。
+_CLOSING_PATTERN = re.compile(
+    r"^(?:这两|那两|两|这|那)(?:种|个|类|两方面|方面|件事)?"
+    r"(?:处理|情况|方式|东西|做法|问题)?"
+    r"(?:方式|方法|做法|处理|情况|东西)?"
+    r"(?:其实|也|确实|可能|就)?"
+    r"(?:不太?一样|不一样|完全不同|不同|不太?同|差不多|类似|有区别|有差别|差很多)$"
+)
+
+
+_CLOSING_MARK = "\x00closing"
+
+
+def _closing(key: str) -> str:
+    """整句是「这两种…不一样」时返回统一记号，否则空串。"""
+    return _CLOSING_MARK if _CLOSING_PATTERN.match(key) else ""
+
+
+def _fingerprint(key: str) -> str:
+    """比较指纹：有实质内容的句子用骨架，纯注脚用 #closing# 记号，其余为空。"""
+    return _skeleton(key) or _closing(key)
+
+
 def _dedup_key(text: str) -> str:
     return _DEDUP_STRIP.sub("", text)
 
@@ -158,6 +222,7 @@ class StreamScrubber:
     def __init__(self, seed: str = "") -> None:
         self._buf = ""
         self._seen: list[str] = []
+        self._skeletons: list[str] = []  # 比较指纹（骨架 / #closing#），见 _fingerprint()
         self._tail_nl = 0  # 已经连续发出的换行数，用来收敛多余空行
         self.violations: list[str] = []
         # 跨轮去重：把上一轮回复里"有分量"的句子先记进来。
@@ -167,6 +232,11 @@ class StreamScrubber:
             key = _dedup_key(seg)
             if len(key) >= CONTAIN_MIN:
                 self._seen.append(key)
+            # 指纹不看长度：上一轮句尾那句「这两种处理方式不太一样」本身很短，
+            # 但它恰恰是这一轮最容易被重复的那句。
+            fp = _fingerprint(key)
+            if fp:
+                self._skeletons.append(fp)
 
     def feed(self, chunk: str) -> str:
         self._buf += chunk
@@ -218,6 +288,12 @@ class StreamScrubber:
 
         self._seen.append(key)
         self._tail_nl = 0
+        # 记下这句的「比较指纹」：有实质内容的是骨架，纯注脚的是 _CLOSING_MARK。
+        # 模型换一句话重讲同一件事时，句面不同、指纹相同。
+        # 空指纹不进表——空串互相相等，会把所有普通句子判成重复。
+        fp = _fingerprint(key)
+        if fp:
+            self._skeletons.append(fp)
         return text
 
     def _is_repeat(self, key: str) -> bool:
@@ -229,7 +305,15 @@ class StreamScrubber:
                 return True
             if len(short) >= SIMILAR_MIN and _similar(key, prev) >= SIMILAR_RATIO:
                 return True
-        return False
+
+        # 换句话重讲一遍：句面不同，骨架相同。
+        # 线上实录：「你是躺下半天睡不着，还是睡着了又反复醒？**这两种处理方式不太一样**。」
+        # 下一段又接一句「这两种处理不一样。」——关键词几乎零重叠，相似度过不了 0.72。
+        # 这类话没有新信息，只是句尾重述，所以按骨架查。
+        mine = _fingerprint(key)
+        if not mine:
+            return False  # 没指纹的句子只走上面那三条，不参与指纹比较
+        return mine in self._skeletons
 
     def _next_boundary(self, s: str) -> int | None:
         for i, ch in enumerate(s):

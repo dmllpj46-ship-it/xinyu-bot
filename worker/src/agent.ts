@@ -21,8 +21,9 @@
  * 工具描述（下面的 description）因此成了唯一的调度依据，写法有硬要求：
  * 必须写清 Use when / Do NOT use when，见 AGENTS.md §6。
  *
- * 安全不在这里管：L2/L3 在调用模型之前就被 `inputGuard` 拦下走写死话术；
- * 非致命家暴的「必须调 crisis_resources」写在 `decision.directive` 里。
+ * 安全规则不在这里管（在 `inputGuard`），但**「这次是开场」这个事实**必须在这里算：
+ * 身份声明（R7）不该每轮都提一遍，也不该靠模型自己数轮次——它看不到轮次，只看得到历史。
+ * 所以由我们判断，再通过 `<this_turn>` 注入一句，理由见 `OPENING_NOTE`。
  *
  * ⚠️ 与 `app/agent.py` 是一对镜像，改一边必须同步另一边（AGENTS.md §2.3）。
  */
@@ -91,8 +92,9 @@ function buildTools(env: Env) {
       "Do NOT use when: 用户在危机中需要立刻回应（那时先给热线，不要先查资料）；" +
       "你只是要寒暄、道谢、复述一句情绪——「嗯」「谢谢」「我今天特别累」这类直接用自己的话接。" +
       "只查一次。一次没查到就直接用常识回答，不要换关键词反复查——每多查一次，用户就多等两秒。" +
-      "千万不要在回复里提「知识库」「资料」「检索」这些过程词，就像老朋友给建议不会先报出处。" +
-      "返回: 若干知识库片段，每段带【篇名 › 小节】来源标注。无命中时会明确说明。",
+      "调用前后都不要播报：「我先查一下」「我去检索」「根据资料」这些话一律不说，" +
+      "也不要在回复里提「知识库」「资料」「检索」「循证」这些过程词或来源名。查完直接给答案。" +
+      "返回: 若干知识库片段（片段自带的【篇名 › 小节】是给你自己看的，不要转述给用户）。",
     parameters: {
       type: "object",
       properties: {
@@ -143,10 +145,28 @@ function buildTools(env: Env) {
   return [kbTool, webTool, crisisTool];
 }
 
-export function buildAgent(env: Env, decision: GuardDecision): Agent {
-  const instructions = decision.directive
-    ? `${SYSTEM_PROMPT}\n\n<this_turn>\n${decision.directive}\n</this_turn>`
-    : SYSTEM_PROMPT;
+/**
+ * 身份声明（R7）只在开场那一次说。写进 `<role>` 是「我应该是什么样」，
+ * 但模型不知道这是第几轮——把历史喂给它，它仍然可能第一轮说、第三轮又说，
+ * 或者干脆忘了说（实测两种都出现过）。所以「这一轮是开场」由我们算、由我们注入。
+ * 与 `app/agent.py` 的 `OPENING_NOTE` 逐字一致。
+ */
+export const OPENING_NOTE =
+  "【本轮状态 · 开场】这是对话的第一轮，对方还不知道你是谁。" +
+  "在回应里用**一句自然的话**说清你是 AI 陪练（不是真人、不是咨询师），别像免责声明一样贴在开头。";
+
+/** Worker 侧的「开场」= 浏览器带上来的历史是空的（无状态，服务端不存会话）。 */
+export function isOpening(historyLen: number): boolean {
+  return historyLen === 0;
+}
+
+export function buildInstructions(decision: GuardDecision, opening = false): string {
+  const directive = [opening ? OPENING_NOTE : "", decision.directive].filter(Boolean).join("\n");
+  return directive ? `${SYSTEM_PROMPT}\n\n<this_turn>\n${directive}\n</this_turn>` : SYSTEM_PROMPT;
+}
+
+export function buildAgent(env: Env, decision: GuardDecision, opening = false): Agent {
+  const instructions = buildInstructions(decision, opening);
 
   // 危机轮次给多一点思考预算；日常对话用 low，换来更快的第一句
   const effort = decision.level >= 2 ? "medium" : (env.MERCURY_REASONING_EFFORT ?? "low");

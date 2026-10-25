@@ -18,9 +18,17 @@
 
 import { describe, expect, it } from "vitest";
 
+import { buildAgent, type Env } from "../src/agent";
 import { assess } from "../src/safety/inputGuard";
 import { scriptFor } from "../src/safety/crisisScript";
 import { POLICE_NUMBER, WOMENS_FEDERATION_NUMBER } from "../src/tools/crisis";
+
+// 测试只用到这几个字段，其余给个空壳
+const ENV = {
+  INCEPTION_API_KEY: "test-key",
+  MERCURY_MODEL: "mercury-3",
+  ASSETS: {} as Fetcher,
+} as Env;
 
 // ── 非致命家暴：必须写死「调一次危机资源」 ─────────────────────
 // 只挂工具不够——实测模型拿到 crisis_resources 也常常不调，
@@ -80,6 +88,41 @@ describe("普通消息不带家暴指令", () => {
     "你可以搜索一些相关网页吗",
   ])("「%s」directive 为空", (message) => {
     expect(assess(message).directive).toBe("");
+  });
+});
+
+// ── 家暴红线（R9）的人格层兜底 ────────────────────────────────
+// `DV_DIRECTIVE` 只在这一轮命中家暴时注入，是「这一轮怎么做」。
+// system.md 的 <limits> 是「任何时候都不做什么」——两层必须都在：
+// 指令覆盖不到的情况（用户先聊别的、第三轮才提被打、指令被模型忽略）
+// 只能靠人格层那条红线兜住。
+describe("家暴红线的人格层兜底", () => {
+  const limits = () => {
+    const text = buildAgent(ENV, assess("嗯")).instructions ?? "";
+    return text.split("<limits>")[1].split("</limits>")[0];
+  };
+
+  it("<limits> 里有「不劝和」，并点名两句禁语", () => {
+    const l = limits();
+    expect(l).toContain("不劝和");
+    expect(l).toContain("夫妻没有隔夜仇");
+    expect(l).toContain("为了孩子忍一忍");
+  });
+
+  it("覆盖面跟着用户说法走：被打 / 被威胁", () => {
+    const l = limits();
+    expect(l).toContain("被打");
+    expect(l).toContain("被威胁");
+  });
+
+  it("「不装医生」单列一条", () => {
+    expect(limits()).toContain("不是医嘱");
+  });
+
+  it("反例里点名一句劝和的话", () => {
+    const text = buildAgent(ENV, assess("嗯")).instructions ?? "";
+    const examples = text.split("<examples>")[1].split("</examples>")[0];
+    expect(examples.includes("沟通不够") || examples.includes("好好聊聊")).toBe(true);
   });
 });
 

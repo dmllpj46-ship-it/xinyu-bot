@@ -254,3 +254,42 @@ describe("跨轮去重", () => {
     expect(s.violations).not.toContain("repeat");
   });
 });
+
+// ── 换个说法重讲一遍 ──────────────────────────────────────────
+// 线上实录（2026-10-26 部署后第一屏就这样）：
+//   「……这两种处理方式不太一样。」
+//   下一段又接：「这两种处理不一样。」
+// 相似度约 0.63 过不了 0.72，阈值抓不住，所以按「重述指纹」判。
+describe("换句话重讲一遍", () => {
+  it("同一段里换个说法重述，第二遍丢掉", () => {
+    const s = new StreamScrubber();
+    const out = s.feed("这两种处理方式不太一样。\n\n这两种处理不一样。\n\n先睡够再说。");
+    expect(out.split("这两种").length - 1).toBe(1);
+    expect(out).toContain("先睡够再说");
+    expect(s.violations).toContain("repeat");
+  });
+
+  it("跨轮重述也丢掉", () => {
+    const seed = "你是躺下半天睡不着，还是睡着了又反复醒？这两种处理方式不太一样。";
+    const s = new StreamScrubber(seed);
+    const out = s.feed("先别急着改作息。\n\n这两种处理不一样。\n\n今晚先只做一件事。");
+    expect(out).not.toContain("这两种处理不一样");
+    expect(out).toContain("今晚先只做一件事");
+    expect(s.violations).toContain("repeat");
+  });
+
+  it("同一个注脚换个词也算重述", () => {
+    const s = new StreamScrubber("这两种处理方式不太一样。");
+    expect(s.feed("这两种方式差很多。")).toBe("");
+    expect(s.violations).toContain("repeat");
+  });
+
+  it("普通句子没有重述指纹，不会互相判重", () => {
+    const s = new StreamScrubber();
+    const out = s.feed("今晚早点睡。明天早点起。别把活儿带到床上。");
+    expect(out).toContain("今晚早点睡");
+    expect(out).toContain("明天早点起");
+    expect(out).toContain("别把活儿带到床上");
+    expect(s.violations).not.toContain("repeat");
+  });
+});

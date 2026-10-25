@@ -24,7 +24,7 @@
 | R4 | **热线不生成** | 热线号码只能来自常量表（`app/tools/crisis.py` / `worker/src/tools/crisis.ts`）。**禁止让模型凭记忆输出电话号码**，禁止在 prompt 里写号码。 |
 | R5 | **不劝阻就医** | 任何情况下不得说"其实不用看医生""咨询师都想赚钱"。 |
 | R6 | **不制造依赖** | 禁止"只有我懂你""你只需要我""别告诉别人"。被要求"你当我唯一的朋友"时要温和设边界。 |
-| R7 | **AI 身份透明** | 首次对话必须说明自己是 AI；被问到时不得含糊。 |
+| R7 | **AI 身份透明** | 首次对话必须说明自己是 AI；被问到时不得含糊（「我是 AI，不是真人，也不是咨询师」）。身份写在 `system.md` 的 `<role>` 里；**「这一轮是开场」由代码判定并注入 `OPENING_NOTE`，不交给模型自己数轮次**。危机轮次走脚本、没有自我声明——这是对的，那时最要紧的是热线 |
 | R8 | **不采集不必要隐私** | 不主动索要真实姓名、住址、单位、身份证、病历号。会话不落盘（v1）。 |
 | R9 | **家暴不劝和** | 命中家暴信号时必须给妇联维权热线；回应顺序是先问当下安全 → 有危险先报警 → 再谈证据/安全计划/保护令。**禁止**说"为了孩子忍一忍""夫妻没有隔夜仇""你们需要好好沟通"。**致命家暴（扼颈/死亡威胁/凶器/重伤/正在发生）不调模型**，直接走脚本 |
 
@@ -36,6 +36,11 @@ R9 单独说明：**"挂上工具"不等于"模型会调用"**。第一版只给
 
 这段指令**曾经住在 `routing.py` 里**，2026-10-26 删路由时搬到了 `input_guard.py`
 （`DV_NONLETHAL` + `_DV_DIRECTIVE`）。它从来不是延迟优化，是安全约束——删路由时必须留下。
+
+R9 还有**第二层**：`_DV_DIRECTIVE` 只管命中家暴的那一轮。用户先聊别的、第三轮才提被打，
+或者模型忽略了指令，就只剩人格层那条红线——`system.md` 的 `<limits>` 第 9 条「不劝和」，
+点名两句禁语（「夫妻没有隔夜仇」「为了孩子忍一忍」）。**两层都要在**：
+删掉 `<limits>` 那条，等于 R9 只在"被正则命中"的时候才成立。
 
 更严重的一层：**致命家暴根本不能过模型**。2026-10-26 实测「他掐我脖子，还威胁要杀我」
 被 Mercury 3 的 API 审核直接拒掉（和拒答自杀内容是同一套机制），
@@ -86,12 +91,13 @@ R9 单独说明：**"挂上工具"不等于"模型会调用"**。第一版只给
 | `agent` 的**工具清单与工具描述** | 三个工具**必须两边都常挂**，顺序 `kb_search` / `web_search` / `crisis_resources`。描述是模型唯一的调度依据，`Use when` / `Do NOT use when` / 「只查一次」/ 禁用话术一条都不能少。**Python 侧必须用 `description_override=`**——docstring 只有第一段会被当描述，多段写作会被 griffe 切成独立 section 后丢掉（见 README §3.1） |
 | `safety/lexicon`（词表、正则） | 两边逐条对齐，正则标志位注意 `g` + `matchAll` |
 | `safety/inputGuard`（分级、指令文案） | 指令文案是 prompt 的一部分，改一个字两边都要改。**家暴指令 `DV_DIRECTIVE` 与 `DV_NONLETHAL` 在这里**，不在路由里 |
-| `safety/outputGuard`（白名单、替换句、去重阈值） | `ALLOWED_NUMBERS` 必须与 `tools/crisis` 的号码集合一致；去重阈值（`EXACT_MIN`/`CONTAIN_MIN`/`SIMILAR_MIN`/`SIMILAR_RATIO`）两边必须同值，否则同一段回复在两端删的句子不一样 |
+| `safety/outputGuard`（白名单、替换句、去重阈值） | `ALLOWED_NUMBERS` 必须与 `tools/crisis` 的号码集合一致；去重阈值（`EXACT_MIN`/`CONTAIN_MIN`/`SIMILAR_MIN`/`SIMILAR_RATIO`）两边必须同值，否则同一段回复在两端删的句子不一样。**「重述指纹」（`_SKELETON_PATTERN` / `_CLOSING_PATTERN` / `SKELETON_MIN`）同样必须同值**，见下方 §6.2 |
 | `safety/crisisScript`（L2/L3 话术） | 这是**用户在最脆弱时刻看到的全部文字**，不允许只有一边更新 |
 | `tools/crisis`（热线表） | 号码错一位就是事故 |
 | `tools/web_search`（联网搜索） | 请求体必须一致：**都不带 `tag`**。带 tag 会 400（见 README §3.2），一端改一端不改，就会出现"线上能搜、本地不能搜" |
 | `tools/kb_search`（BM25 + 领域锚词） | `ANCHORS` 命中时要绕过覆盖度门槛、并压掉非锚词块，两边逻辑必须一致，否则同一句「他打我了」在两端命中不同篇 |
-| `prompts/system.md` | Worker 侧由 `npm run kb` 编译进 `generated/prompt.ts`，**改完必须重跑** |
+| `prompts/system.md` | Worker 侧由 `npm run kb` 编译进 `generated/prompt.ts`，**改完必须重跑**。五段的职责边界：`<role>` 是「我是谁」，`<limits>` 是「任何时候都不做什么」，`<this_turn>` 是「这一轮怎么做」——别把一句规则同时写进两段 |
+| `agent` 的开场判定（`OPENING_NOTE` / `isOpening`） | 文案逐字一致；判定口径是**开场与否**——Python 取 `SQLiteSession` 条数，Worker 取清理后 `history.length`。两边不一致会出现「本地第一轮声明身份、线上第五轮才声明」 |
 | `knowledge/*.md` | 本地跑 `ingest_kb.py`，Worker 跑 `build-kb.mjs` |
 
 判断标准：**改完之后，同一条输入在两个运行时上应该得到同一个分级、同一段危机话术、
@@ -185,14 +191,14 @@ pip install -r requirements.txt
 python scripts\ingest_kb.py                 # 改了 knowledge/ 之后必跑
 python scripts\smoke_test.py                # 14 条端到端：连通 + 工具 + 危机 + 四个新领域 + 致命家暴 + 反面对照
 python -m uvicorn app.main:app --port 8000 --reload
-pytest -q                                   # 182 例
+pytest -q                                   # 179 例
 pytest tests/test_safety.py -q              # 改 safety 后必跑
 
 # ── Worker 版（TypeScript） ──
 npm install
 npm run kb                                  # 改了 knowledge/ 或 system.md 之后必跑
 npm run dev                                 # wrangler dev → http://127.0.0.1:8787
-npm test                                    # vitest，170 例
+npm test                                    # vitest，185 例
 npm run typecheck                           # tsc --noEmit
 npm run deploy                              # kb + wrangler deploy → xinyu-bot.poetfangnimagoupi.workers.dev
 ```
@@ -281,6 +287,35 @@ node scripts/screenshot.mjs --url http://127.0.0.1:8787/ --out docs/shot.png --w
 写法深浅的尺度：**够模型当场给出可执行的一步就行，不追求体系完整。**
 一篇 7–11 块，别写成教科书。
 
+### 6.2 输出侧去重：三条相似度 + 一类「重述指纹」
+
+`output_guard` 的删句判断分两层，改任何一层都要两端同值。
+
+**第一层：相似度三条**（`EXACT_MIN` / `CONTAIN_MIN` / `SIMILAR_MIN` / `SIMILAR_RATIO = 0.72`）。
+管的是"同一句话原样或几乎原样说两遍"。
+
+**第二层：重述指纹。** 管的是"换一句话把同一件事再说一遍"，相似度那三条抓不住：
+
+```
+「……这两种处理方式不太一样。」      ← 上一轮结尾
+「这两种处理不一样。」                ← 这一轮开头（相似度约 0.63，过不了 0.72）
+```
+
+- `_SKELETON_PATTERN`：把「这两X XX不一样」这一整块剥掉，剩下的骨架当指纹。
+  **剥完必须还剩 ≥ `SKELETON_MIN` 个字且有中文**，否则返回空——整句就是注脚的，
+  骨架是空的，不构成"说了两件事"。
+- `_CLOSING_PATTERN`：整句就是注脚的，统一映射成 `_CLOSING_MARK`。
+  这句话本身不承载信息，只可能在句尾给前一句做注脚，说第二遍就是卡带。
+- **空指纹不进表。** 空串互相相等，会把所有普通句子判成重复。
+- 指纹**不看长度**（和 `_seen` 不同）：上一轮句尾那句注脚本身很短，
+  但它恰恰是这一轮最容易被重复的那句。
+
+⚠️ 写这类正则的两个坑（都踩过）：
+1. **不能全可选。** 所有分段都带 `?` 时正则能匹配空串，`subn`/`replace` 在每个位置插一次删除，
+   "是否命中"判断形同虚设。至少要有一段必须出现。
+2. **不能逐词替换。** 把 `不同`/`处理`/`方式` 逐词 sub 掉会把整句掏空，
+   反而永远撞不上。要按"指示词 → 判定词"的**整块模式**剥。
+
 ---
 
 ## 7. 新增工具的格式
@@ -352,12 +387,12 @@ tool({
 ## 9. 提交前自检（Definition of Done）
 
 **本地版：**
-- [ ] `pytest -q` 全绿（当前 182 例）
+- [ ] `pytest -q` 全绿（当前 179 例）
 - [ ] `python scripts\smoke_test.py` 通过（含危机路径 + 四个新领域 + 「纯情绪不检索」反面对照）
 - [ ] 新增/修改的知识文档能被 `ingest_kb.py` 正常切块，且 `kb_search` 能命中
 
 **Worker 版：**
-- [ ] `npm test` 全绿（当前 170 例）
+- [ ] `npm test` 全绿（当前 185 例）
 - [ ] `npm run typecheck` 零错误
 - [ ] 改过 `knowledge/` 或 `system.md` → 已重跑 `npm run kb`
 - [ ] `npm run dev` 后 `/api/health` 返回 `kbReady: true`

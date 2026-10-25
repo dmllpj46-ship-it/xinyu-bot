@@ -22,6 +22,7 @@ import {
   REFUSAL_TEXT,
   buildAgent,
   buildRunner,
+  isOpening,
   isRefusal,
   type Env,
   type HistoryTurn,
@@ -102,7 +103,8 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
       try {
         const runner = buildRunner(env);
-        const agent = buildAgent(env, decision);
+        // 开场判定要用**清理之后**的 history：前端偶尔会带上来空条目或坏角色
+        const agent = buildAgent(env, decision, isOpening(history.length));
         const input: AgentInputItem[] = history.map((h) =>
           h.role === "user"
             ? { role: "user" as const, content: h.content }

@@ -13,7 +13,15 @@ from __future__ import annotations
 import asyncio
 import re
 
-from app.agent import MAX_TURNS, TOOLS, build_agent, build_instructions, stream_reply
+from app.agent import (
+    MAX_TURNS,
+    OPENING_NOTE,
+    TOOLS,
+    build_agent,
+    build_instructions,
+    is_opening,
+    stream_reply,
+)
 from app.safety.input_guard import assess
 
 _TOOL_NAMES = ("kb_search", "web_search", "crisis_resources")
@@ -70,11 +78,32 @@ def test_every_tool_has_use_and_do_not_use() -> None:
 
 
 def test_kb_tool_forbids_meta_talk() -> None:
-    """线上出现过「我先从知识库查一下……」——对方不需要知道检索过程。"""
+    """线上出现过「我先从知识库查一下……」——对方不需要知道检索过程。
+
+    2026-10-26 复现：删路由后模型开始自己决定"什么时候查"，于是它会在**调用前**
+    先播报一句「我先查一下针对「躺下脑子还在转」的循证方法」。原来的禁令只写了
+    "不要在回复里提知识库"，管得住名词、管不住"我去查"这个动作，
+    所以现在把动作和名词一起禁掉。
+    """
     kb = next(t for t in TOOLS if t.name == "kb_search")
     desc = kb.description or ""
     assert "知识库" in desc
-    assert "千万不要在回复里提" in desc
+    assert "我不要播报" not in desc  # 防手滑写成第一人称
+    assert "「我先查一下」" in desc
+    assert "不要在回复里提" in desc
+
+
+def test_kb_tool_does_not_invite_citing_sources() -> None:
+    """检索结果自带的【篇名 › 小节】是给模型看的，不该变成回复里的"出处"。"""
+    kb = next(t for t in TOOLS if t.name == "kb_search")
+    assert "不要转述给用户" in (kb.description or "")
+
+
+def test_prompt_forbids_narrating_the_search() -> None:
+    """格式层也有一条：不播报过程。工具描述可能被忽略，规则得写两处。"""
+    text = build_instructions()
+    assert "不播报过程" in text
+    assert "我先查一下" in text
 
 
 def test_web_tool_tells_model_not_to_refuse() -> None:
@@ -142,6 +171,62 @@ def test_ordinary_message_has_no_this_turn() -> None:
     """普通消息不该被塞 <this_turn>——指令越少，模型越不跑偏。"""
     agent = build_agent(assess("嗯，今天特别累"))
     assert "<this_turn>" not in agent.instructions
+
+
+# ── 身份声明（R7）：只在开场说，且由我们判定 ─────────────────
+def test_role_carries_ai_identity() -> None:
+    """身份是「我是谁」，必须写在 <role> 里，不能只挂在格式约束里。
+
+    旧版这句在 <format>（"首次对话用一句话说明自己是 AI 陪练"）。
+    放在格式段里，模型把它当成排版规则而不是身份，被问「你是真人吗」时
+    没有任何一条「我是谁」的依据可依。
+    """
+    text = build_instructions()
+    role = text.split("</role>")[0]
+    assert "AI" in role
+    assert "不是医生，不是咨询师" in role
+
+
+def test_ai_identity_removed_from_format() -> None:
+    """同一件事不该写在两处——格式段里留一句会导致每轮都想"交代一下身份"。"""
+    text = build_instructions()
+    fmt = text.split("<format>")[1].split("</format>")[0]
+    assert "AI 陪练" not in fmt
+
+
+def test_opening_note_only_on_first_turn() -> None:
+    """开场注入一次，第二轮开始不再提——不能变成每轮一句免责声明。"""
+    first = build_agent(assess("你好"), opening=is_opening(0))
+    later = build_agent(assess("你好"), opening=is_opening(2))
+
+    assert OPENING_NOTE in first.instructions
+    assert OPENING_NOTE not in later.instructions
+    assert "<this_turn>" in first.instructions and "<this_turn>" not in later.instructions
+
+
+def test_opening_and_directive_can_coexist() -> None:
+    """第一句就是家暴：既要声明身份，也要强制调危机资源，两段都得在。"""
+    agent = build_agent(assess("我老公昨天打我了"), opening=True)
+    assert OPENING_NOTE in agent.instructions
+    assert "crisis_resources" in agent.instructions
+    assert "为了孩子忍一忍" in agent.instructions
+
+
+def test_opening_does_not_talk_about_being_human() -> None:
+    """注入的话术本身不能反过来鼓励"我是个真人"的说法。"""
+    assert "不是真人" in OPENING_NOTE
+
+
+def test_scripted_paths_bypass_opening_note() -> None:
+    """L2 走脚本，根本不进模型——开场声明也就没有，这是对的：
+    危机时最要紧的是热线，不是自我介绍。"""
+
+    async def run() -> str:
+        events = [ev async for ev in stream_reply("test-open-l2", "x", assess("我不想活了"))]
+        return "".join(e["text"] for e in events if e["type"] == "token")
+
+    text = asyncio.run(run())
+    assert "AI" not in text
 
 
 # ── 危机路径：根本不进模型 ──────────────────────────────────

@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { MAX_TURNS, buildAgent, type Env } from "../src/agent";
+import { MAX_TURNS, OPENING_NOTE, buildAgent, isOpening, type Env } from "../src/agent";
 import { assess } from "../src/safety/inputGuard";
 
 const TOOL_NAMES = ["kb_search", "web_search", "crisis_resources"];
@@ -69,7 +69,21 @@ describe("工具描述：模型唯一的调度依据", () => {
     // 线上出现过「我先从知识库查一下……」
     const desc = tools.find((t) => t.name === "kb_search")?.description ?? "";
     expect(desc).toContain("知识库");
-    expect(desc).toContain("千万不要在回复里提");
+    // 2026-10-26 复现：删路由后模型自己决定何时查，于是会在**调用前**播报
+    // 「我先查一下针对「躺下脑子还在转」的循证方法」。光禁名词管不住动作。
+    expect(desc).toContain("「我先查一下」");
+    expect(desc).toContain("不要在回复里提");
+  });
+
+  it("kb_search 不鼓励转述来源", () => {
+    const desc = tools.find((t) => t.name === "kb_search")?.description ?? "";
+    expect(desc).toContain("不要转述给用户");
+  });
+
+  it("prompt 也不许播报检索过程", () => {
+    const text = buildAgent(ENV, assess("嗯")).instructions ?? "";
+    expect(text).toContain("不播报过程");
+    expect(text).toContain("我先查一下");
   });
 
   it("web_search 明确告诉模型不要拒答", () => {
@@ -107,6 +121,44 @@ describe("安全指令注入", () => {
     expect(instructions).toContain("crisis_resources");
     expect(instructions).toContain("为了孩子忍一忍");
     expect(instructions).not.toContain("12338"); // 号码仍只从 crisis.ts 出（R4）
+  });
+});
+
+describe("身份声明（R7）：只在开场说", () => {
+  it("<role> 里就有身份，不用等格式段", () => {
+    // 旧版这句在 <format>（「首次对话用一句话说明自己是 AI 陪练」）。
+    // 放在格式段里，模型把它当排版规则而不是身份，被问「你是真人吗」时无据可依。
+    const text = buildAgent(ENV, assess("嗯")).instructions ?? "";
+    const role = text.split("</role>")[0];
+    expect(role).toContain("AI");
+    expect(role).toContain("不是医生，不是咨询师");
+  });
+
+  it("格式段里不再重复身份要求", () => {
+    const text = buildAgent(ENV, assess("嗯")).instructions ?? "";
+    const fmt = text.split("<format>")[1].split("</format>")[0];
+    expect(fmt).not.toContain("AI 陪练");
+  });
+
+  it("开场注入一次，第二轮不再提", () => {
+    const first = buildAgent(ENV, assess("你好"), isOpening(0)).instructions ?? "";
+    const later = buildAgent(ENV, assess("你好"), isOpening(2)).instructions ?? "";
+
+    expect(first).toContain(OPENING_NOTE);
+    expect(later).not.toContain(OPENING_NOTE);
+    expect(first).toContain("<this_turn>");
+    expect(later).not.toContain("<this_turn>");
+  });
+
+  it("开场 + 家暴可以共存", () => {
+    const text = buildAgent(ENV, assess("我老公昨天打我了"), true).instructions ?? "";
+    expect(text).toContain(OPENING_NOTE);
+    expect(text).toContain("crisis_resources");
+    expect(text).toContain("为了孩子忍一忍");
+  });
+
+  it("开场话术不许引导「我是真人」", () => {
+    expect(OPENING_NOTE).toContain("不是真人");
   });
 });
 

@@ -156,9 +156,55 @@ function sentences(text: string): string[] {
   return text.split(/(?<=[。！？!?；;\n])/).filter((p) => p.trim());
 }
 
+// ── 换个说法重讲一遍 ──────────────────────────────────────────
+// 线上实录（2026-10-26 部署后第一屏就这样）：
+//   「……这两种处理方式不太一样。」
+//   下一段又接：「这两种处理不一样。」
+// 两句去标点后字符重叠很少，相似度约 0.63，过不了 0.72——原来那套阈值抓不住。
+// 这类话没有新信息，只是句尾给前一句做注脚，说第二遍就是卡带。
+//
+// ⚠️ 这一段必须有，前面的全部可选。曾经全可选 → 正则能匹配空串，
+// exec 在每个位置都命中，指纹判断形同虚设。
+const SKELETON_PATTERN = new RegExp(
+  "(?:这两|那两|两|这|那)(?:种|个|类|方面|件事)?" +
+    "(?:的)?" +
+    "(?:处理|情况|方式|东西|做法|问题)?" +
+    "(?:方式|方法|做法|处理|情况|东西)?" +
+    "(?:其实|也|确实|可能|就)?" +
+    "(?:不太?一样|不一样|完全不同|不同|不太?同|差不多|类似|有区别|有差别|差很多)",
+  "g",
+);
+const SKELETON_MIN = 4;
+const CLOSING_MARK = "\x00closing";
+const CLOSING_PATTERN = new RegExp(
+  "^(?:这两|那两|两|这|那)(?:种|个|类|两方面|方面|件事)?" +
+    "(?:处理|情况|方式|东西|做法|问题)?" +
+    "(?:方式|方法|做法|处理|情况|东西)?" +
+    "(?:其实|也|确实|可能|就)?" +
+    "(?:不太?一样|不一样|完全不同|不同|不太?同|差不多|类似|有区别|有差别|差很多)$",
+);
+
+function skeleton(key: string): string {
+  const body = key.replace(SKELETON_PATTERN, "");
+  if (body === key) return ""; // 没有重述特征
+  if (body.length < SKELETON_MIN) return ""; // 整句就是「这两种处理不一样」
+  if (!/[\u4e00-\u9fff]/.test(body)) return "";
+  return body;
+}
+
+function closing(key: string): string {
+  return CLOSING_PATTERN.test(key) ? CLOSING_MARK : "";
+}
+
+/** 比较指纹：有实质内容的句子用骨架，纯注脚用 CLOSING_MARK，其余为空。 */
+function fingerprint(key: string): string {
+  return skeleton(key) || closing(key);
+}
+
 export class StreamScrubber {
   private buf = "";
   private seen: string[] = [];
+  private prints: string[] = []; // 比较指纹（骨架 / CLOSING_MARK）
   private tailNl = 0; // 已经连续发出的换行数，用来收敛多余空行
   readonly violations: string[] = [];
 
@@ -172,6 +218,10 @@ export class StreamScrubber {
     for (const seg of sentences(seed)) {
       const key = dedupKey(seg);
       if (key.length >= CONTAIN_MIN) this.seen.push(key);
+      // 指纹不看长度：上一轮句尾那句「这两种处理方式不太一样」本身很短，
+      // 但它恰恰是这一轮最容易被重复的那句。
+      const fp = fingerprint(key);
+      if (fp) this.prints.push(fp);
     }
   }
 
@@ -240,6 +290,11 @@ export class StreamScrubber {
 
     this.seen.push(key);
     this.tailNl = 0;
+    // 记下比较指纹：有实质内容的是骨架，纯注脚的是 CLOSING_MARK。
+    // 换句话说同一件事时，句面不同、指纹相同。空指纹不进表
+    // ——空串互相相等，会把所有普通句子判成重复。
+    const fp = fingerprint(key);
+    if (fp) this.prints.push(fp);
     return text;
   }
 
@@ -251,7 +306,11 @@ export class StreamScrubber {
       if (short.length >= CONTAIN_MIN && long.includes(short)) return true;
       if (short.length >= SIMILAR_MIN && similarity(key, prev) >= SIMILAR_RATIO) return true;
     }
-    return false;
+
+    // 换个说法重讲一遍：句面不同，指纹相同。见文件上方 SKELETON_PATTERN 的说明。
+    const mine = fingerprint(key);
+    if (!mine) return false; // 没指纹的句子只走上面三条，不参与指纹比较
+    return this.prints.includes(mine);
   }
 }
 

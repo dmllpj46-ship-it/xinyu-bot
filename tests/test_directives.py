@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.agent import build_instructions
 from app.safety.crisis_script import script_for
 from app.safety.input_guard import assess
 from app.tools.crisis import HOTLINES
@@ -92,6 +93,37 @@ def test_dv_directive_has_no_phone_number() -> None:
 )
 def test_ordinary_messages_get_no_dv_directive(message: str) -> None:
     assert assess(message).directive == ""
+
+
+# ── 家暴红线（R9）的人格层兜底 ──────────────────────────────
+# `_DV_DIRECTIVE` 只在这一轮命中家暴时注入，是"这一轮怎么做"。
+# `system.md` 的 <limits> 是"任何时候都不做什么"——两层必须都在：
+# 指令覆盖不到的情况（用户先聊别的、第三轮才提被打、指令被模型忽略）
+# 只能靠人格层那条红线兜住。
+def test_limits_carry_dv_red_line() -> None:
+    limits = build_instructions().split("<limits>")[1].split("</limits>")[0]
+    assert "不劝和" in limits
+    for banned_example in ("夫妻没有隔夜仇", "为了孩子忍一忍"):
+        assert banned_example in limits, f"<limits> 里没有点名「{banned_example}」"
+
+
+def test_limits_dv_red_line_covers_violence_variants() -> None:
+    """词表要跟着用户说法走：被推、被掐、被限制出门，也算。"""
+    limits = build_instructions().split("<limits>")[1].split("</limits>")[0]
+    assert "被打" in limits
+    assert "被威胁" in limits
+
+
+def test_limits_has_no_doctor_stand_in() -> None:
+    """「不装医生」单列一条：给的是方法和陪伴，不是医嘱。"""
+    limits = build_instructions().split("<limits>")[1].split("</limits>")[0]
+    assert "不是医嘱" in limits
+
+
+def test_examples_include_reconciliation_anti_pattern() -> None:
+    """反例里点名一句劝和的话——比只写"不要劝和"更容易被模型记住。"""
+    examples = build_instructions().split("<examples>")[1].split("</examples>")[0]
+    assert "沟通不够" in examples or "好好聊聊" in examples
 
 
 # ── L1：情绪高危 ────────────────────────────────────────────
