@@ -18,6 +18,31 @@ const RELATIVE_CUTOFF = 0.28;
 const MIN_COVERAGE = 0.34;
 const SHORT_QUERY_TERMS = 3;
 
+/**
+ * 领域锚词：有些词单独出现就足以定性，不该被覆盖度门槛拦下。
+ *
+ * 典型失败：用户说「我老公昨天打我了，我该怎么办」，查询里大量 bigram 是
+ * 「昨天」「我该」「怎么办」，家暴那篇只覆盖到「打我」，覆盖度 0.21 → 被丢弃，
+ * 结果模型拿到了「朋友不想活了我该怎么办」那一条，答非所问。
+ *
+ * 命中锚词时：这类块排在最前，且**只返回**这类块——查询已经明确指向一个领域了。
+ * ⚠️ 与 app/tools/kb_search.py 的 ANCHORS 是一对镜像，改一边必须同步另一边。
+ */
+const ANCHORS = [
+  "家暴",
+  "家庭暴力",
+  "殴打",
+  "施暴",
+  "掐脖",
+  "保护令",
+  "告诫书",
+  "庇护",
+  "打我",
+  "打了我",
+  "被打",
+  "扇我",
+];
+
 interface IndexedChunk {
   chunk: KbChunk;
   tf: Map<string, number>;
@@ -60,7 +85,9 @@ export function searchHits(query: string, topK = TOP_K): Hit[] {
   const qTokens = [...new Set(tokenize(query))];
   if (!qTokens.length) return [];
 
-  const scored: Array<{ score: number; coverage: number; chunk: KbChunk }> = [];
+  const qAnchors = ANCHORS.filter((a) => query.includes(a));
+
+  const scored: Array<{ score: number; coverage: number; chunk: KbChunk; anchored: boolean }> = [];
   for (const c of chunks) {
     let score = 0;
     let matched = 0;
@@ -71,18 +98,28 @@ export function searchHits(query: string, topK = TOP_K): Hit[] {
       matched++;
       score += (weight(t) * (idf.get(t) ?? 0) * f * (K1 + 1)) / (f + norm);
     }
-    if (score > 0) scored.push({ score, coverage: matched / qTokens.length, chunk: c.chunk });
+    if (score > 0) {
+      const haystack = `${c.chunk.title} ${c.chunk.heading} ${c.chunk.text}`;
+      const anchored = qAnchors.length > 0 && qAnchors.some((a) => haystack.includes(a));
+      scored.push({ score, coverage: matched / qTokens.length, chunk: c.chunk, anchored });
+    }
   }
 
   if (!scored.length) return [];
-  scored.sort((a, b) => b.score - a.score || b.coverage - a.coverage);
 
+  // 锚词命中的块排最前，其余按分数、覆盖度排
+  scored.sort(
+    (a, b) => Number(b.anchored) - Number(a.anchored) || b.score - a.score || b.coverage - a.coverage,
+  );
+
+  const hasAnchor = scored.some((s) => s.anchored);
   const best = scored[0].score;
   const requireCoverage = qTokens.length > SHORT_QUERY_TERMS;
   const out: Hit[] = [];
   for (const s of scored) {
+    if (hasAnchor && !s.anchored) break; // 查询已经明确指向某个领域，不再混入其他篇
     if (s.score < best * RELATIVE_CUTOFF) break;
-    if (requireCoverage && s.coverage < MIN_COVERAGE) continue;
+    if (requireCoverage && !s.anchored && s.coverage < MIN_COVERAGE) continue;
     out.push({ score: s.score, chunk: s.chunk });
     if (out.length >= topK) break;
   }

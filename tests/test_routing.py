@@ -112,3 +112,42 @@ def test_web_directive_forbids_phone_numbers() -> None:
     """搜索结果里常带机构电话，模型不能转述（R4）。"""
     turn = plan("上海哪里有免费的心理咨询", assess("上海哪里有免费的心理咨询"))
     assert "不要转述搜索结果里的电话号码" in turn.directive
+
+
+# ── 家暴 ────────────────────────────────────────────────────
+@pytest.mark.parametrize(
+    "message",
+    [
+        "我老公昨天打我了，我该怎么办",
+        "他掐我脖子，是不是很危险",
+        "他跟踪我，还说不许我出门",
+        "我想申请人身安全保护令",
+    ],
+)
+def test_dv_goes_to_kb_with_crisis_resources(message: str) -> None:
+    """家暴必须查知识库（安全计划、证据、保护令都在那篇里），同时要能给出热线。"""
+    turn = plan(message, assess(message))
+    assert turn.mode == "kb"
+    assert "kb_search" in turn.tools
+    assert "crisis_resources" in turn.tools
+
+
+def test_dv_short_message_still_searches() -> None:
+    """「他打我了」只有 4 个字，但绝不能因为短就跳过检索。"""
+    turn = plan("他打我了", assess("他打我了"))
+    assert turn.mode == "kb"
+    assert turn.reason == "dv"
+
+
+@pytest.mark.parametrize("message", ["他只是推了我一下", "他推搡我", "他扇了我一耳光"])
+def test_dv_physical_variants(message: str) -> None:
+    """「推了我一下」这类轻描淡写的说法也要挂危机资源——轻描淡写本身是常见反应。"""
+    assert "crisis_resources" in plan(message, assess(message)).tools
+
+
+def test_dv_directive_forbids_reconciliation() -> None:
+    """挂工具不等于模型会调，所以指令里要写死：不许劝和，必须给号码。"""
+    turn = plan("他只是推了我一下", assess("他只是推了我一下"))
+    assert "crisis_resources" in turn.directive
+    assert "为了孩子忍一忍" in turn.directive
+    assert "12338" not in turn.directive  # 号码仍只从 crisis.py 出（R4）

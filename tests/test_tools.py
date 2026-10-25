@@ -142,3 +142,48 @@ def test_web_search_all_blocked_degrades() -> None:
     data = {"data": {"results": [{"title": "台中市", "url": "https://a.gov.tw/x", "snippet": "x"}]}}
     out = _format(data)
     assert "中国大陆" in out
+
+
+# ── 家暴知识库 ────────────────────────────────────────────
+# 这篇的检索特别容易出错：用户说的是「他打我了」，而文档正文写的是「殴打」。
+# 靠领域锚词（kb_search.ANCHORS）兜住，否则会被「怎么办」抢走命中。
+
+
+@pytest.mark.skipif(not HAS_INDEX, reason="需要先建索引")
+@pytest.mark.parametrize(
+    "query",
+    [
+        "我老公昨天打我了，我该怎么办",
+        "他掐我脖子，是不是很危险",
+        "这算不算家暴，他只是推了我一下",
+        "我想申请人身安全保护令，怎么弄",
+        "家暴要留什么证据",
+        "被打了但是为了孩子要不要忍",
+    ],
+)
+def test_kb_hits_dv_doc(query: str) -> None:
+    out = search(query, 3)
+    heads = [line for line in out.split("\n") if line.startswith("【")]
+    assert heads, f"{query} 没有任何命中"
+    assert "家暴" in heads[0], f"{query} 首条不是家暴篇：{heads}"
+
+
+@pytest.mark.skipif(not HAS_INDEX, reason="需要先建索引")
+def test_anchor_does_not_break_unrelated_queries() -> None:
+    """锚词机制不能把「量子色动力学」这类无关查询带偏。"""
+    out = search("量子色动力学的渐近自由")
+    assert "没有直接相关" in out
+
+
+def test_hotline_table_has_12338() -> None:
+    """家暴场景要给得出妇联维权热线，否则用户只知道报警。"""
+    numbers = {h["number"] for h in HOTLINES}
+    assert "12338" in numbers
+
+
+def test_dv_doc_has_no_phone_numbers() -> None:
+    """R4：知识库不写号码，号码只从 crisis.py 出。"""
+    path = ROOT / "knowledge" / "10-家暴预防与安全脱身.md"
+    text = path.read_text(encoding="utf-8")
+    assert "12338" not in text
+    assert not re.search(r"1[3-9]\d{9}|0\d{2,3}[- ]?\d{7,8}", text)

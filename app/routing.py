@@ -69,7 +69,9 @@ _KB_TOPIC = re.compile(
     r"社交|沟通|拒绝|边界|完美主义|自责|羞耻|内疚|"
     r"悲伤|难过|哀伤|丧失|去世|分手|离婚|失恋|"
     r"失业|裁员|考试|绩效|加班|领导|同事|"
-    r"父母|孩子|伴侣|婚姻|原生家庭|创伤|成瘾|手机|游戏"
+    r"父母|孩子|伴侣|婚姻|原生家庭|创伤|成瘾|手机|游戏|"
+    r"家暴|家庭暴力|殴打|被打|打我|掐脖|施暴|跟踪|"
+    r"不许出门|不让出门|限制人身自由|人身安全保护令|告诫书|庇护"
 )
 # 求方法：强信号本身就说明「我要一个办法」，没有歧义，不需要长度门槛
 _KB_ASK_STRONG = re.compile(
@@ -82,6 +84,24 @@ _KB_ASK_WEAK = re.compile(r"怎么|多久|为什么")
 
 _KB_TOPIC_MIN = 12  # 主题名词成立所需的最短长度
 _KB_ASK_WEAK_MIN = 10  # 弱求方法信号成立所需的最短长度
+
+# 家暴信号。命中时额外挂 crisis_resources——不是为了热线（多数情况还没到危机级），
+# 而是因为「打人」和「掐脖子」之间差着生死，模型需要能给出报警与妇联维权的号码。
+_DV = re.compile(
+    r"家暴|家庭暴力|殴打|打我|打了我|被打|掐.{0,3}脖|施暴|动手打|扇了?我|推了?我|推搡|"
+    r"跟踪我|威胁要杀|威胁.{0,4}杀|不许出门|不让出门|限制人身自由|"
+    r"人身安全保护令|告诫书|庇护"
+)
+
+# 只挂工具还不够——实测模型拿到 crisis_resources 也常常不调，
+# 于是妇联热线号码就不到用户眼前。所以明确要求这一轮调一次。
+_DV_DIRECTIVE = (
+    "【本轮安全指令 · 家暴】这一轮**必须调用 crisis_resources 一次**，"
+    "并把妇联维权热线的号码原样转述给用户（号码一个字都不要改）。"
+    "回应顺序：先问当下是否安全、对方是否还在现场；"
+    "有危险先给报警；再谈证据、安全计划、人身安全保护令。"
+    "不要劝和、不要说「为了孩子忍一忍」、不要建议用户去「沟通」。"
+)
 
 # ── 路由指令（追加到 system prompt 的 <this_turn> 里）─────────
 _DIRECTIVES: dict[Mode, str] = {
@@ -154,17 +174,29 @@ def plan(message: str, decision: GuardDecision) -> TurnPlan:
         mode: Mode = "web"
         tools = ["web_search"]
         reason = f"web:{web}"
+        directive = _DIRECTIVES["web"]
     elif kb:
         mode = "kb"
         tools = ["kb_search"]
         reason = f"kb:{kb}"
+        directive = _DIRECTIVES["kb"]
     else:
         mode = "chat"
         tools = []
         reason = "no-retrieval-signal"
+        directive = _DIRECTIVES["chat"]
+
+    # 家暴：先查知识库（安全计划、证据、保护令都在这篇里），同时给危机资源
+    if _DV.search(text) and "crisis_resources" not in tools:
+        if mode == "chat":
+            mode = "kb"
+            tools = ["kb_search"]
+            reason = "dv"
+        tools.append("crisis_resources")
+        directive = f"{directive}\n\n{_DV_DIRECTIVE}"
 
     # L1（情绪高危）必须能给出热线，所以额外挂 crisis_resources
-    if decision.level == 1:
+    if decision.level == 1 and "crisis_resources" not in tools:
         tools.append("crisis_resources")
 
-    return TurnPlan(mode, tuple(tools), _DIRECTIVES[mode], reason)
+    return TurnPlan(mode, tuple(tools), directive, reason)

@@ -235,7 +235,8 @@ psycologist-bot/
 │  ├─ 06-危机识别与安全计划.md
 │  ├─ 07-沟通-共情-动机式访谈.md
 │  ├─ 08-伦理边界与转介标准.md
-│  └─ 09-常见提问速查.md
+│  ├─ 09-常见提问速查.md
+│  └─ 10-家暴预防与安全脱身.md
 │
 ├─ web/                   # 两个运行时共用同一份前端
 │  ├─ index.html          # 单页，无构建
@@ -472,6 +473,6 @@ $k | npx wrangler secret put INCEPTION_API_KEY
 
 ### 11.5 成本与配额（免费档够用）
 
-- 请求数 10 万/天、CPU 10ms/请求 —— 本项目的 CPU 消耗主要是 BM25 首次建索引（72 块，毫秒级）与正则扫描，压力不大。
+- 请求数 10 万/天、CPU 10ms/请求 —— 本项目的 CPU 消耗主要是 BM25 首次建索引（83 块，毫秒级）与正则扫描，压力不大。
 - 真正的成本在 Mercury 3 的 token，不在 Workers。
 - `wrangler dev` 会把遥测提示打到 stderr，`WRANGLER_SEND_METRICS=false` 可关掉。

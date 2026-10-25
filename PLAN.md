@@ -305,7 +305,7 @@ P8（延迟优化与检索修复）已落地，见下方"第二轮迭代"。
 | 阶段 | 状态 | 落地物 |
 |---|---|---|
 | P0 骨架 | ✅ | `.venv`、`requirements.txt`、`app/config.py`、`app/main.py`、`.gitignore` |
-| P1 知识库 | ✅ | `knowledge/` 9 篇 → 72 块；`scripts/ingest_kb.py`；`app/tools/kb_search.py`（BM25 + 覆盖度门槛） |
+| P1 知识库 | ✅ | `knowledge/` 10 篇 → 83 块；`scripts/ingest_kb.py`；`app/tools/kb_search.py`（BM25 + 覆盖度门槛） |
 | P2 Agent | ✅ | `app/prompts/system.md`、`app/agent.py`、`app/tools/{web_search,crisis}.py` |
 | P3 安全层 | ✅ | `safety/{lexicon,input_guard,output_guard,crisis_script}.py` |
 | P4 UI | ✅ | `web/{index.html,style.css,app.js}` + `POST /api/chat` SSE |

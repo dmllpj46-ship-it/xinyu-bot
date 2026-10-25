@@ -17,7 +17,7 @@ import re
 from difflib import SequenceMatcher
 
 # ── 白名单号码（与 app/tools/crisis.py 保持一致）──────────────
-ALLOWED_NUMBERS = {"12356", "120", "110", "119", "82951332", "01082951332"}
+ALLOWED_NUMBERS = {"12356", "120", "110", "119", "12338", "82951332", "01082951332"}
 
 _DIAGNOSIS = re.compile(
     r"(你|这|您)(是|属于|符合|患了|得了|就是).{0,8}"

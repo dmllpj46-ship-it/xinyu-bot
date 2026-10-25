@@ -27,6 +27,17 @@ RELATIVE_CUTOFF = 0.28
 MIN_COVERAGE = 0.34
 SHORT_QUERY_TERMS = 3
 
+# ── 领域锚词 ──────────────────────────────────────────────
+# 有些词单独出现就足以定性，不该被覆盖度门槛拦下。
+# 典型失败：用户说「我老公昨天打我了，我该怎么办」，查询里大量 bigram 是
+# 「昨天」「我该」「怎么办」，家暴那篇只覆盖到「打我」，覆盖度 0.21 → 被丢弃，
+# 结果模型拿到了「朋友不想活了我该怎么办」那一条，答非所问。
+# 命中锚词时：这类块排在最前，且**只返回**这类块——查询已经明确指向一个领域了。
+ANCHORS = (
+    "家暴", "家庭暴力", "殴打", "施暴", "掐脖", "保护令", "告诫书", "庇护",
+    "打我", "打了我", "被打", "扇我",
+)
+
 
 class _Index:
     def __init__(self, path: Path) -> None:
@@ -47,7 +58,9 @@ class _Index:
         if not q_tokens:
             return []
 
-        scored: list[tuple[float, float, int]] = []
+        q_anchors = [a for a in ANCHORS if a in query]
+
+        scored: list[tuple[float, float, int, bool]] = []
         for i, tf in enumerate(self.tfs):
             score = 0.0
             matched = 0
@@ -59,20 +72,25 @@ class _Index:
                 matched += 1
                 score += weight(t) * self.idf.get(t, 0.0) * f * (K1 + 1) / (f + norm)
             if score > 0:
-                scored.append((score, matched / len(q_tokens), i))
+                anchored = bool(q_anchors) and any(a in self.chunks[i]["text"] for a in q_anchors)
+                scored.append((score, matched / len(q_tokens), i, anchored))
 
         if not scored:
             return []
 
-        scored.sort(key=lambda x: (-x[0], -x[1]))
+        # 锚词命中的块排最前，其余按分数、覆盖度排
+        scored.sort(key=lambda x: (-int(x[3]), -x[0], -x[1]))
+        has_anchor = any(x[3] for x in scored)
         best = scored[0][0]
         require_coverage = len(q_tokens) > SHORT_QUERY_TERMS
 
         out: list[tuple[float, dict]] = []
-        for score, coverage, i in scored:
+        for score, coverage, i, anchored in scored:
+            if has_anchor and not anchored:
+                break  # 查询已经明确指向某个领域，不再混入其他篇
             if score < best * RELATIVE_CUTOFF:
                 break
-            if require_coverage and coverage < MIN_COVERAGE:
+            if require_coverage and not anchored and coverage < MIN_COVERAGE:
                 continue
             out.append((score, self.chunks[i]))
             if len(out) >= top_k:

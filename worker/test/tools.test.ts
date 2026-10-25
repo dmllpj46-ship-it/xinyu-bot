@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { HOTLINES, SAFETY_PLAN_STEPS, resourcesText, safetyPlanText } from "../src/tools/crisis";
-import { search } from "../src/tools/kbSearch";
+import { search, searchHits } from "../src/tools/kbSearch";
 import { ALLOWED_NUMBERS } from "../src/safety/outputGuard";
 import { KB_CHUNKS } from "../src/generated/kb";
 import { SYSTEM_PROMPT } from "../src/generated/prompt";
@@ -189,5 +189,44 @@ describe("web_search 来源过滤", () => {
   it("全部被挡时降级说明", async () => {
     const out = await runWith([{ title: "台中市", url: "https://a.gov.tw/x", snippet: "x" }]);
     expect(out).toContain("中国大陆");
+  });
+});
+
+// ── 家暴知识库 ────────────────────────────────────────────
+// 这篇的检索特别容易出错：用户说的是「他打我了」，而文档正文写的是「殴打」。
+// 靠领域锚词（kbSearch.ANCHORS）兜住，否则会被「怎么办」抢走命中。
+describe("家暴知识库", () => {
+  const queries = [
+    "我老公昨天打我了，我该怎么办",
+    "他掐我脖子，是不是很危险",
+    "这算不算家暴，他只是推了我一下",
+    "我想申请人身安全保护令，怎么弄",
+    "家暴要留什么证据",
+    "被打了但是为了孩子要不要忍",
+  ];
+
+  for (const query of queries) {
+    it(`「${query}」首条命中家暴篇`, () => {
+      const hits = searchHits(query, 3);
+      expect(hits.length).toBeGreaterThan(0);
+      expect(hits[0].chunk.title).toContain("家暴");
+    });
+  }
+
+  it("锚词机制不影响无关查询", () => {
+    expect(search("量子色动力学的渐近自由")).toContain("没有直接相关");
+  });
+
+  it("热线表里有妇联维权热线", () => {
+    expect(HOTLINES.map((h) => h.number)).toContain("12338");
+  });
+
+  it("知识库不写号码（R4）", () => {
+    const dir = join(ROOT, "knowledge");
+    const file = readdirSync(dir).find((f) => f.includes("家暴"));
+    expect(file).toBeTruthy();
+    const text = readFileSync(join(dir, file!), "utf8");
+    expect(text).not.toContain("12338");
+    expect(text).not.toMatch(/1[3-9]\d{9}|0\d{2,3}[- ]?\d{7,8}/);
   });
 });

@@ -102,3 +102,36 @@ describe("指令", () => {
     expect(turn.directive).toContain("不要转述搜索结果里的电话号码");
   });
 });
+
+describe("家暴", () => {
+  const cases = [
+    "我老公昨天打我了，我该怎么办",
+    "他掐我脖子，是不是很危险",
+    "他跟踪我，还说不许我出门",
+    "我想申请人身安全保护令",
+  ];
+
+  for (const message of cases) {
+    it(`「${message}」查知识库 + 给危机资源`, () => {
+      const turn = plan(message, assess(message));
+      expect(turn.mode).toBe("kb");
+      expect(turn.tools).toContain("kb_search");
+      expect(turn.tools).toContain("crisis_resources");
+    });
+  }
+
+  it("短消息也不跳过检索", () => {
+    // 「他打我了」只有 4 个字，但绝不能因为短就跳过检索
+    const turn = plan("他打我了", assess("他打我了"));
+    expect(turn.mode).toBe("kb");
+    expect(turn.reason).toBe("dv");
+  });
+});
+
+  it("指令里写死：不许劝和，必须给号码", () => {
+    // 挂工具不等于模型会调，所以指令里要写死
+    const turn = plan("他只是推了我一下", assess("他只是推了我一下"));
+    expect(turn.directive).toContain("crisis_resources");
+    expect(turn.directive).toContain("为了孩子忍一忍");
+    expect(turn.directive).not.toContain("12338"); // 号码仍只从 crisis.ts 出（R4）
+  });
