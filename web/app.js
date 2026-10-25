@@ -205,9 +205,8 @@
           const { event, data } = frame;
           if (event === "meta") {
             if (data.crisis) document.body.classList.add("crisis");
-            // 检索路径要等 1–4 秒，先给个胶囊，别让人对着空气泡等
-            if (data.mode === "kb") addToolPill(botNode, "正在查阅资料…");
-            else if (data.mode === "web") addToolPill(botNode, "正在联网查证…");
+            // 不再按 mode 预判要不要挂「正在检索」的胶囊：工具由模型自己决定调不调，
+            // 预判等于猜。真调了下面 event === "tool" 会挂上。
           } else if (event === "crisis") {
             gotCrisis = true;
             addCrisisCard(botNode, data);

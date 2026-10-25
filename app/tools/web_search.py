@@ -118,14 +118,26 @@ async def search(query: str, max_results: int = 4) -> str:
     return _format(data)
 
 
-@function_tool
-async def web_search(query: str) -> str:
-    """联网搜索最新信息（政策、机构、新闻、本地资源）。
+WEB_SEARCH_DESCRIPTION = (
+    "联网搜索最新信息（政策、机构、新闻、本地资源）。\n"
+    "Use when: 用户问「最近有什么政策」「哪里有免费的」「这个机构靠谱吗」「怎么挂号」，\n"
+    "或需要核实 2026 年之后才有的信息、具体地址与收费；\n"
+    "或用户**直接要求你搜索/上网查/看看网页**（「你可以搜一下吗」「帮我查一下当地的资源」）"
+    "——这种明确请求一定要调，不要回答「我没法联网」。\n"
+    "Do NOT use when: 用户在描述情绪、需要陪伴或方法（那属于 kb_search）；\n"
+    "用户在危机中（先给热线，不要先搜）。\n"
+    "只搜一次。要说明这是网络信息、可能不准确。不要转述搜索结果里的电话号码。\n"
+    "只采用中国大陆官方来源（.gov.cn、卫健委、医保局）；港澳台地区信息不要采用，"
+    "提到时一律写「中国台湾」「中国香港」「中国澳门」。\n"
+    "返回: 最多 4 条搜索结果，含标题、摘要、链接。结果可能不准确，需向用户说明。"
+)
 
-    Use when: 用户问"最近有什么政策""哪里有免费的""这个机构靠谱吗""怎么挂号"，
-              或需要核实 2026 年之后才有的信息、具体地址与收费。
-    Do NOT use when: 用户在描述情绪、需要陪伴或方法（那属于 kb_search）；
-                      用户在危机中（先给热线，不要先搜）。
-    返回: 最多 4 条搜索结果，含标题、摘要、链接。结果可能不准确，需向用户说明。
+
+@function_tool(description_override=WEB_SEARCH_DESCRIPTION)
+async def web_search(query: str) -> str:
+    """联网搜索最新信息。
+
+    描述走 `description_override`：docstring 只有第一段会被当成工具描述
+    （详见 `kb_search` 的注释）。
     """
     return await search(query)

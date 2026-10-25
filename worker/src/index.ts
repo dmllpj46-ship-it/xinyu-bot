@@ -2,12 +2,15 @@
  * Cloudflare Worker 入口：静态资源 + POST /api/chat（SSE）。
  *
  * SSE 帧格式（与 web/app.js 对齐，改这里要同步改那边）：
- *   event: meta   data: {"level":0,"crisis":false,"mode":"kb"}
+ *   event: meta   data: {"level":0,"crisis":false}
  *   event: crisis data: {"hotlines":[...],"plan":[...]}
  *   event: tool   data: {"name":"kb_search"}
  *   event: token  data: {"text":"..."}
- *   event: done   data: {"tools":[...],"guardHits":[...],"mode":"kb"}
+ *   event: done   data: {"tools":[...],"guardHits":[...]}
  *   event: error  data: {"message":"..."}
+ *
+ * `meta` 里曾经有 `mode`（chat/kb/web），2026-10-26 删掉轮次路由后没有了——
+ * 前端也不再靠它预判「要不要先挂个正在检索的胶囊」，等真正的 `tool` 帧到了再说。
  *
  * 会话是无状态的：历史由浏览器带上来（history 字段）。
  * 这样既不需要 Durable Object / KV，也不会在服务端留下任何对话记录。
@@ -15,15 +18,14 @@
 
 import type { AgentInputItem } from "@openai/agents";
 import {
+  MAX_TURNS,
   REFUSAL_TEXT,
   buildAgent,
   buildRunner,
   isRefusal,
-  maxTurnsFor,
   type Env,
   type HistoryTurn,
 } from "./agent";
-import { plan as planTurn } from "./routing";
 import { assess } from "./safety/inputGuard";
 import { StreamScrubber } from "./safety/outputGuard";
 import { scriptChunks } from "./safety/crisisScript";
@@ -71,7 +73,6 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   if (message.length > 2000) return json({ error: "message 过长（上限 2000 字）" }, 400);
 
   const decision = assess(message);
-  const turn = planTurn(message, decision);
   const history = cleanHistory(body.history);
   const encoder = new TextEncoder();
 
@@ -81,7 +82,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
         controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       };
 
-      send("meta", { level: decision.level, crisis: decision.level >= 2, mode: turn.mode });
+      send("meta", { level: decision.level, crisis: decision.level >= 2 });
       if (decision.showCard) {
         send("crisis", { hotlines: HOTLINES, plan: SAFETY_PLAN_STEPS });
       }
@@ -89,7 +90,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
       // L2/L3 不调模型：Mercury 的 API 审核会拒答这类内容，且危机回复本就不该被生成
       if (decision.level >= 2) {
         for (const chunk of scriptChunks(decision)) send("token", { text: chunk });
-        send("done", { tools: [], guardHits: [], crisis: true, scripted: true, mode: "crisis" });
+        send("done", { tools: [], guardHits: [], crisis: true, scripted: true });
         controller.close();
         return;
       }
@@ -101,7 +102,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
       try {
         const runner = buildRunner(env);
-        const agent = buildAgent(env, decision, turn);
+        const agent = buildAgent(env, decision);
         const input: AgentInputItem[] = history.map((h) =>
           h.role === "user"
             ? { role: "user" as const, content: h.content }
@@ -115,7 +116,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
         const result = await runner.run(agent, input, {
           stream: true,
-          maxTurns: maxTurnsFor(turn.mode),
+          maxTurns: MAX_TURNS,
         });
 
         for await (const event of result) {
@@ -149,14 +150,12 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
           tools: toolsUsed,
           guardHits: [...new Set(scrubber.violations)],
           crisis: false,
-          mode: turn.mode,
-          reason: turn.reason,
         });
       } catch (err) {
         if (isRefusal(err)) {
           // 模型侧审核拒答。不能把英文拒绝语原样丢给用户。
           send("token", { text: REFUSAL_TEXT });
-          send("done", { tools: toolsUsed, guardHits: ["model_refusal"], crisis: false, mode: turn.mode });
+          send("done", { tools: toolsUsed, guardHits: ["model_refusal"], crisis: false });
         } else {
           console.error("agent run failed", err);
           const kind = err instanceof Error ? err.name : "Error";

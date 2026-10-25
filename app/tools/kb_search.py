@@ -130,14 +130,28 @@ def search(query: str, top_k: int = TOP_K) -> str:
     return header + "\n\n---\n\n".join(blocks)
 
 
-@function_tool
-def kb_search(query: str) -> str:
-    """检索本地心理健康知识库（循证自助方法、危机干预、沟通技巧、转介标准）。
+KB_DESCRIPTION = (
+    "检索本地心理健康知识库（循证自助方法、危机干预、沟通技巧、转介标准）。\n"
+    "Use when: 用户描述具体的情绪/躯体/睡眠问题，你需要给出有依据的方法或练习；\n"
+    "用户问「该怎么办」「有什么办法」「要不要看医生」；\n"
+    "用户讲到一件具体的生活事件（被裁、离婚、出轨、孩子厌学、婆媳矛盾、亲人去世）。\n"
+    "Do NOT use when: 用户在危机中需要立刻回应（那时先给热线，不要先查资料）；\n"
+    "你只是要寒暄、道谢、复述一句情绪——「嗯」「谢谢」「我今天特别累」这类直接用自己的话接。\n"
+    "只查一次。一次没查到就用常识答，不要换关键词反复查——每多查一次，用户就多等两秒。\n"
+    "千万不要在回复里提「知识库」「资料」「检索」这些过程词。\n"
+    "返回: 若干知识库片段，每段带【篇名 › 小节】来源标注。无命中时会明确说明。"
+)
 
-    Use when: 用户描述具体的情绪/躯体/睡眠问题，你需要给出有依据的方法或练习；
-              用户问"该怎么办""有什么办法""要不要看医生"。
-    Do NOT use when: 用户在危机中需要立刻回应（那时先给热线，不要先查资料）；
-                      你只是要寒暄或复述情绪。
-    返回: 若干知识库片段，每段带【篇名 › 小节】来源标注。无命中时会明确说明。
+
+@function_tool(description_override=KB_DESCRIPTION)
+def kb_search(query: str) -> str:
+    """检索本地心理健康知识库。
+
+    ⚠️ 描述必须走 `description_override`，不能只写在 docstring 里。
+
+    为什么：`function_tool` 用 griffe 解析 docstring，**只取第一个 text section**
+    当工具描述。docstring 里空一行就分段，`Use when` / `Do NOT use when` 那几段
+    全部被丢掉，模型看到就只有一句「检索本地心理健康知识库」。
+    工具常挂之后，描述是模型唯一的调度依据——丢了这几段，等于让它盲猜。
     """
     return search(query)

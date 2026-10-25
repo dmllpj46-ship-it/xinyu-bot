@@ -69,13 +69,21 @@ def safety_plan_text() -> str:
     return "\n".join(lines)
 
 
-@function_tool
+CRISIS_DESCRIPTION = (
+    "获取危机干预热线与安全计划步骤。\n"
+    "Use when: 用户表达自伤/自杀念头、说自己撑不住、或问「能找谁帮忙」「有没有热线」；\n"
+    "用户讲到被打、被推搡、被威胁、被限制出门（家暴）；\n"
+    "也可以用于用户问「怎么帮一个想不开的朋友」。\n"
+    "Do NOT use when: 用户只是普通压力、没有风险信号（那属于 kb_search 的职责）。\n"
+    "返回: 可直接转述的热线清单（号码已核对）与安全计划六步。号码必须原样使用，不得改写。"
+)
+
+
+@function_tool(description_override=CRISIS_DESCRIPTION)
 def crisis_resources(region: str = "全国") -> str:
     """获取危机干预热线与安全计划步骤。
 
-    Use when: 用户表达自伤/自杀念头、说自己撑不住、或问"能找谁帮忙""有没有热线"。
-              也可以用于用户问"怎么帮一个想不开的朋友"。
-    Do NOT use when: 用户只是普通压力、没有风险信号（那属于 kb_search 的职责）。
-    返回: 可直接转述的热线清单（号码已核对）与安全计划六步。号码必须原样使用，不得改写。
+    描述走 `description_override`：docstring 只有第一段会被当成工具描述
+    （详见 `kb_search` 的注释）。
     """
     return resources_text(region) + "\n\n" + safety_plan_text()

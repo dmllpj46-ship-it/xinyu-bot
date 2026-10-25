@@ -5,10 +5,22 @@ Mercury 3 的三个适配点（改之前先看 AGENTS.md §3）：
 2. 必须关掉 tracing，否则会拿没有的 OpenAI key 去上传
 3. reasoning_effort 不在 OpenAI 标准字段里，走 extra_body
 
-## 每轮只挂必要的工具
+## 工具全部常挂，由模型自己决定调不调
 
-`app/routing.py` 会把每一轮判成 chat / kb / web，这里按判定结果挂工具。
-chat 模式**一个检索工具都不挂**——这是首字延迟的关键，详见 routing 的模块注释。
+2026-10-26 删掉了轮次路由。曾经的做法是每轮先用正则判一次"要不要检索、检索哪一边"，
+只挂命中那一个工具。这样省延迟，但代价是**判错就当面拒答**：用户写「你可以搜索一些
+相关网页吗」，四个联网信号一个都没中，被判成纯聊天，一个工具都没挂，bot 回一句
+"这轮我没法搜，工具没挂载"——一个明确的请求被自己的门卫拦在门外。
+
+现在三个工具一次全挂，模型看到工具描述自己判断。省下的那点延迟不值得拿"该查的没查、
+该搜的没搜"去换。实测多挂工具不影响首字延迟（模型的第一句是边想边出的），
+多出来的时间只在**真的调了工具**时才付。
+
+工具描述（`app/tools/*.py` 的 docstring）因此成了唯一的调度依据，写法有硬要求：
+必须写清 Use when / Do NOT use when，见 AGENTS.md §6。
+
+安全不在这里管：L2/L3 在调用模型之前就被 `input_guard` 拦下走写死话术；
+非致命家暴的"必须调 crisis_resources"写在 `decision.directive` 里。
 """
 
 from __future__ import annotations
@@ -31,7 +43,6 @@ from agents import (
 from agents.memory import SQLiteSession
 
 from app.config import get_settings
-from app.routing import TurnPlan, plan as plan_turn
 from app.safety.crisis_script import script_chunks
 from app.safety.input_guard import GuardDecision
 from app.safety.output_guard import StreamScrubber
@@ -46,15 +57,12 @@ set_tracing_disabled(True)  # 没有 OpenAI key，trace 上传只会 401
 _PROMPT = Path(__file__).resolve().parent / "prompts" / "system.md"
 _MAX_SESSIONS = 64
 
-# 工具注册表。键名必须与 routing.TurnPlan.tools 里的字符串一致。
-_TOOLS = {
-    "kb_search": kb_search,
-    "web_search": web_search,
-    "crisis_resources": crisis_resources,
-}
+# 三个工具常挂。顺序固定，便于测试断言与两端对齐。
+TOOLS = (kb_search, web_search, crisis_resources)
 
-# 没有工具可挂时只跑一轮模型；有工具时给到 3 轮（1 次工具 + 1 次收尾 + 1 次余量）
-_MAX_TURNS = {"chat": 1, "kb": 3, "web": 3}
+# 1 次工具调用 + 1 次收尾 + 1 次余量（模型偶尔会连调两个工具）
+# 不再按模式封顶：模型自己决定调几个，但最多 3 轮往返，防止反复检索把首字拖成十几秒。
+MAX_TURNS = 3
 
 # 模型拒答时的兜底。不给热线会让人卡在"说了一半没人接"的位置。
 _REFUSAL_FALLBACK = (
@@ -86,21 +94,21 @@ def system_prompt(directive: str = "") -> str:
     return base
 
 
-def build_agent(decision: GuardDecision | None = None, turn: TurnPlan | None = None) -> Agent:
-    s = get_settings()
-    if turn is None:
-        turn = TurnPlan("chat", (), "", "default")
+def build_instructions(decision: GuardDecision | None = None) -> str:
+    """基础 prompt + 本轮安全指令。指令为空时不加 `<this_turn>` 包裹。"""
+    return system_prompt(decision.directive if decision else "")
 
-    # 安全指令（input_guard）在前，路由指令（routing）在后
-    directives = [d for d in ((decision.directive if decision else ""), turn.directive) if d]
+
+def build_agent(decision: GuardDecision | None = None) -> Agent:
+    s = get_settings()
     # 危机轮次给多一点思考预算；日常对话用 low，换来更快的第一句
     effort = "medium" if (decision and decision.level >= 2) else s.mercury_reasoning_effort
 
     return Agent(
         name="心屿",
-        instructions=system_prompt("\n\n".join(directives)),
+        instructions=build_instructions(decision),
         model=_build_model(),
-        tools=[_TOOLS[name] for name in turn.tools if name in _TOOLS],
+        tools=list(TOOLS),
         model_settings=ModelSettings(
             temperature=s.mercury_temperature,
             max_tokens=800,
@@ -165,12 +173,10 @@ async def stream_reply(
             "guard_hits": [],
             "crisis": True,
             "scripted": True,
-            "mode": "crisis",
         }
         return
 
-    turn = plan_turn(message, decision)
-    agent = build_agent(decision, turn)
+    agent = build_agent(decision)
     session = get_session(session_id)
     scrubber = StreamScrubber(seed=await _last_assistant_text(session))
     tools_used: list[str] = []
@@ -180,7 +186,7 @@ async def stream_reply(
             agent,
             input=message,
             session=session,
-            max_turns=_MAX_TURNS.get(turn.mode, 3),
+            max_turns=MAX_TURNS,
         )
 
         async for event in result.stream_events():
@@ -211,8 +217,6 @@ async def stream_reply(
             "tools": tools_used,
             "guard_hits": sorted(set(scrubber.violations)),
             "crisis": decision.level >= 2,
-            "mode": turn.mode,
-            "reason": turn.reason,
         }
 
     except Exception as exc:
@@ -226,7 +230,6 @@ async def stream_reply(
                 "tools": tools_used,
                 "guard_hits": ["model_refusal"],
                 "crisis": False,
-                "mode": turn.mode,
             }
             return
         logger.exception("agent run failed")
@@ -235,12 +238,11 @@ async def stream_reply(
 
 async def run_once(session_id: str, message: str, decision: GuardDecision) -> str:
     """非流式，给 smoke_test 用。"""
-    turn = plan_turn(message, decision)
-    agent = build_agent(decision, turn)
+    agent = build_agent(decision)
     result = await Runner.run(
         agent,
         input=message,
         session=get_session(session_id),
-        max_turns=_MAX_TURNS.get(turn.mode, 3),
+        max_turns=MAX_TURNS,
     )
     return str(result.final_output or "")

@@ -31,15 +31,18 @@
 **改 `app/safety/` 或 `worker/src/safety/` 下任何文件，必须在 PR/提交说明里单独列出改了什么、为什么，并跑两边的 safety 测试。**
 
 R9 单独说明：**"挂上工具"不等于"模型会调用"**。第一版只给 `crisis_resources` 挂了工具，
-实测模型经常不调，妇联热线就到不了用户眼前。所以 `_DV_DIRECTIVE` 把调用次数、
-回应顺序、禁止事项全部写死在指令里。削弱这段指令等同于删掉 R9。
+实测模型经常不调，妇联热线就到不了用户眼前。所以 `input_guard.py` 的 `_DV_DIRECTIVE`
+把调用次数、回应顺序、禁止事项全部写死在指令里。削弱这段指令等同于删掉 R9。
+
+这段指令**曾经住在 `routing.py` 里**，2026-10-26 删路由时搬到了 `input_guard.py`
+（`DV_NONLETHAL` + `_DV_DIRECTIVE`）。它从来不是延迟优化，是安全约束——删路由时必须留下。
 
 更严重的一层：**致命家暴根本不能过模型**。2026-10-26 实测「他掐我脖子，还威胁要杀我」
 被 Mercury 3 的 API 审核直接拒掉（和拒答自杀内容是同一套机制），
 `crisis_resources` 一次都没调到，用户拿到一句"这一轮我没能生成回复"。
 所以 `lexicon.py` 的 `DV_L2_PATTERNS` 把扼颈、死亡威胁、凶器、重伤、正在发生
 这几类直接判成 L2，走 `crisis_script` 的写死话术。剩下的"严重但没到致命"
-（揍了一顿没伤、手臂紫了）仍走 kb + `crisis_resources`。
+（揍了一顿没伤、手臂紫了）走模型 + 强制调 `crisis_resources`。
 
 ---
 
@@ -80,9 +83,9 @@ R9 单独说明：**"挂上工具"不等于"模型会调用"**。第一版只给
 
 | 改动 | 必须同步 |
 |---|---|
-| `routing`（轮次路由：信号词、指令文案） | 两边逐条对齐。**判错的代价是延迟或深度，不是安全**，但漂移会让两个运行时表现不一致，用户换端就发现"它变笨了" |
+| `agent` 的**工具清单与工具描述** | 三个工具**必须两边都常挂**，顺序 `kb_search` / `web_search` / `crisis_resources`。描述是模型唯一的调度依据，`Use when` / `Do NOT use when` / 「只查一次」/ 禁用话术一条都不能少。**Python 侧必须用 `description_override=`**——docstring 只有第一段会被当描述，多段写作会被 griffe 切成独立 section 后丢掉（见 README §3.1） |
 | `safety/lexicon`（词表、正则） | 两边逐条对齐，正则标志位注意 `g` + `matchAll` |
-| `safety/inputGuard`（分级、指令文案） | 指令文案是 prompt 的一部分，改一个字两边都要改 |
+| `safety/inputGuard`（分级、指令文案） | 指令文案是 prompt 的一部分，改一个字两边都要改。**家暴指令 `DV_DIRECTIVE` 与 `DV_NONLETHAL` 在这里**，不在路由里 |
 | `safety/outputGuard`（白名单、替换句、去重阈值） | `ALLOWED_NUMBERS` 必须与 `tools/crisis` 的号码集合一致；去重阈值（`EXACT_MIN`/`CONTAIN_MIN`/`SIMILAR_MIN`/`SIMILAR_RATIO`）两边必须同值，否则同一段回复在两端删的句子不一样 |
 | `safety/crisisScript`（L2/L3 话术） | 这是**用户在最脆弱时刻看到的全部文字**，不允许只有一边更新 |
 | `tools/crisis`（热线表） | 号码错一位就是事故 |
@@ -91,8 +94,14 @@ R9 单独说明：**"挂上工具"不等于"模型会调用"**。第一版只给
 | `prompts/system.md` | Worker 侧由 `npm run kb` 编译进 `generated/prompt.ts`，**改完必须重跑** |
 | `knowledge/*.md` | 本地跑 `ingest_kb.py`，Worker 跑 `build-kb.mjs` |
 
-判断标准：**改完之后，同一条输入在两个运行时上应该得到同一个分级、同一段危机话术、同一个 mode。**
+判断标准：**改完之后，同一条输入在两个运行时上应该得到同一个分级、同一段危机话术、
+同一组工具、同一段 `<this_turn>` 指令。**
 做不到就先补测试，别急着上线。
+
+> **已经没有"轮次路由"了。** 2026-10-26 删掉了 `routing.py` / `routing.ts`。
+> 别再往回加：那层设计上就会当面拒答（用户明确要求搜索，被正则判成纯聊天，
+> 一个工具都没挂，bot 回一句"这轮我没法搜"）。要影响工具调度，**改工具描述**；
+> 要加安全约束，**加 `inputGuard` 的 directive**。
 
 ### 2.4 daisyUI 的边界（别越界）
 
@@ -174,16 +183,16 @@ const provider = new OpenAIProvider({
 # ── 本地版（Python） ──
 pip install -r requirements.txt
 python scripts\ingest_kb.py                 # 改了 knowledge/ 之后必跑
-python scripts\smoke_test.py                # 12 条端到端：连通 + 工具 + 危机 + 四个新领域 + 致命家暴 + 反面对照
+python scripts\smoke_test.py                # 14 条端到端：连通 + 工具 + 危机 + 四个新领域 + 致命家暴 + 反面对照
 python -m uvicorn app.main:app --port 8000 --reload
-pytest -q                                   # 169 例
+pytest -q                                   # 182 例
 pytest tests/test_safety.py -q              # 改 safety 后必跑
 
 # ── Worker 版（TypeScript） ──
 npm install
 npm run kb                                  # 改了 knowledge/ 或 system.md 之后必跑
 npm run dev                                 # wrangler dev → http://127.0.0.1:8787
-npm test                                    # vitest，166 例
+npm test                                    # vitest，170 例
 npm run typecheck                           # tsc --noEmit
 npm run deploy                              # kb + wrangler deploy → xinyu-bot.poetfangnimagoupi.workers.dev
 ```
@@ -208,10 +217,10 @@ node scripts/screenshot.mjs --url http://127.0.0.1:8787/ --out docs/shot.png --w
 | 路径 | 职责 | 修改注意 |
 |---|---|---|
 | `app/main.py` | 路由、SSE 帧格式、错误兜底 | 改 SSE 协议要同步改 `web/app.js` **和** `worker/src/index.ts` |
-| `app/agent.py` | Agent 装配、Session、Runner | 工具按 `TurnPlan.tools` 挂载，注册表 `_TOOLS` 的键名必须与 routing 里的字符串一致 |
-| `app/routing.py` / `worker/src/routing.ts` | 轮次路由：要不要检索、检索哪一边 | **延迟预算的守门人**。加一个信号词 = 一批消息多等两秒，加之前先想清楚（README §3.1）。四档信号的强度顺序不能改：求方法(强) → 事件 → 求方法(弱) → 主题(感受)。家暴命中时还要强制挂 `crisis_resources` 并把 `mode` 抬成 `kb` |
+| `app/agent.py` | Agent 装配、Session、Runner | 三个工具**常挂**，顺序固定。要影响"什么时候调"，改工具描述，不要加回路由 |
 | `worker/src/index.ts` | Worker 路由、SSE、历史裁剪、L2/L3 早返回 | L2/L3 的分流必须**在调模型之前**，别挪到后面 |
-| `worker/src/agent.ts` | Provider / Agent / Runner 装配 | `useResponses: false` 不能删 |
+| `worker/src/agent.ts` | Provider / Agent / Runner 装配 | `useResponses: false` 不能删；工具描述写在这里，是模型的调度依据 |
+| `app/safety/input_guard.py` / `worker/src/safety/inputGuard.ts` | 危机分级 + **本轮安全指令**（L1 热线、家暴强制调危机资源） | 家暴指令在这里，不在别处。削弱它等于删掉 R9 |
 | `app/prompts/system.md` | 人格、语气、输出结构、红线复述 | **纯文本文件**；Worker 侧由 `npm run kb` 编译，改完两边都要验 |
 | `app/tools/*.py` / `worker/src/tools/*.ts` | 每个工具一个文件 | 描述就是给模型看的工具说明，**必须写清"什么时候用/什么时候别用"** |
 | `app/safety/*.py` / `worker/src/safety/*.ts` | 词表、分级、输出过滤、危机话术 | 见 §1 与 §2.3，**两边同时改** |
@@ -276,26 +285,38 @@ node scripts/screenshot.mjs --url http://127.0.0.1:8787/ --out docs/shot.png --w
 
 ## 7. 新增工具的格式
 
+**⚠️ Python 侧的工具描述必须用 `description_override=`，不能只写在 docstring 里。**
+
+`function_tool` 用 griffe 解析 docstring，**只取第一个 text section 当工具描述**。
+docstring 里空一行就分段，`Use when` / `Do NOT use when` 那几段会被切成独立 section 然后丢掉——
+模型看到的只剩第一句「检索本地心理健康知识库」。工具常挂之后描述是唯一的调度依据，
+丢了这几段等于让模型盲猜。这个坑踩过一次（README §3.1）。
+
 ```python
 from agents import function_tool
 
-@function_tool
-def my_tool(query: str) -> str:
-    """一句话说明这个工具做什么。
+MY_TOOL_DESCRIPTION = (
+    "一句话说明这个工具做什么。\n"
+    "Use when: 用户问 XX 的时候。\n"
+    "Do NOT use when: 用户只是 XX 的时候（那属于 YY 工具的职责）。\n"
+    "返回：一段纯文本，最多 1200 字，超过要截断。"
+)
 
-    Use when: 用户问 XX 的时候。
-    Do NOT use when: 用户只是 XX 的时候（那属于 YY 工具的职责）。
-    返回：一段纯文本，最多 1200 字，超过要截断。
-    """
+
+@function_tool(description_override=MY_TOOL_DESCRIPTION)
+def my_tool(query: str) -> str:
+    """一句话说明（只有这一段会被 griffe 读到，所以真正的描述在 description_override 里）。"""
     ...
 ```
 
 - 返回值**永远是字符串**，且是给模型读的**结构化纯文本**（不要 JSON 字符串，模型会二次解析出错）。
 - 单次返回 ≤ 1200 字，超了截断并注明"已截断"。
 - 网络工具必须有超时（`web_search` 用 **6 秒**，不是 8——压力大的人等不起，宁可降级也不要拖满）和失败兜底文案。
-- 加完工具：更新 `app/agent.py` 的 `_TOOLS` 注册表 **和** `worker/src/agent.ts` 的 `buildTools()`
-  → 如果它该按轮次挂载，还要在 `routing.py` / `routing.ts` 里登记（注册表键名必须和 routing 里的字符串一致）
-  → 跑 `smoke_test.py` → 在 README §2 架构图里补一行。
+- 加完工具：加进 `app/agent.py` 的 `TOOLS` 元组 **和** `worker/src/agent.ts` 的 `buildTools()` 返回值，
+  **两边都常挂、顺序一致**（不存在"这一轮挂哪个"的概念了）
+  → 描述里必须写清 `Use when` / `Do NOT use when`，禁用话术也写进去（模型会照做，线上验证过）
+  → 在 `tests/test_agent.py` / `worker/test/agent.test.ts` 的 `_TOOL_NAMES` 里加一行
+  → 跑 `smoke_test.py` 和 `live_check.py` → 在 README §2 架构图里补一行。
 
 TypeScript 侧写法（`worker/src/tools/`）：
 
@@ -331,12 +352,12 @@ tool({
 ## 9. 提交前自检（Definition of Done）
 
 **本地版：**
-- [ ] `pytest -q` 全绿（当前 169 例）
+- [ ] `pytest -q` 全绿（当前 182 例）
 - [ ] `python scripts\smoke_test.py` 通过（含危机路径 + 四个新领域 + 「纯情绪不检索」反面对照）
 - [ ] 新增/修改的知识文档能被 `ingest_kb.py` 正常切块，且 `kb_search` 能命中
 
 **Worker 版：**
-- [ ] `npm test` 全绿（当前 166 例）
+- [ ] `npm test` 全绿（当前 170 例）
 - [ ] `npm run typecheck` 零错误
 - [ ] 改过 `knowledge/` 或 `system.md` → 已重跑 `npm run kb`
 - [ ] `npm run dev` 后 `/api/health` 返回 `kbReady: true`
@@ -348,8 +369,14 @@ tool({
 - [ ] 改动涉及 `safety/` 或 `prompts/` 时，手动跑 5 条测试对话：
       ① 普通压力 ② 焦虑躯体化 ③ 明确自杀意念 ④ 要求诊断 ⑤ 要求开药
 - [ ] 改动涉及 `safety/` 时，`app/` 与 `worker/src/` **两边都已同步**（§2.3）
-- [ ] 改过 `routing`：两边的 `reason` 字段一致（同一句输入在两端给出同一个 `kb:event` / `kb:topic` / `dv`），
-      且 `tests/test_routing.py` 与 `worker/test/routing.test.ts` 用例数对得上
+- [ ] 改过工具（名字/描述/新增）：
+      ① `app/agent.py` 的 `TOOLS` 与 `worker/src/agent.ts` 的 `buildTools()` 两边都加了、顺序一致
+      ② Python 侧用的是 `description_override=`，且 `Use when` / `Do NOT use when` 在**实际生效**的描述里
+         （`pytest tests/test_agent.py -k description` 会检查这一点）
+      ③ `tests/test_agent.py` 与 `worker/test/agent.test.ts` 的 `TOOL_NAMES` 对得上
+- [ ] 改过 `inputGuard` 的 directive（尤其家暴那种）：`tests/test_directives.py` 与
+      `worker/test/directives.test.ts` 用例数对得上，且指令里**没有号码**（R4）
+- [ ] 上线后用 `python scripts/live_check.py` 看一眼：该调工具的真调了、纯情绪的真没调
 - [ ] README / PLAN / AGENTS 里过时的描述已同步
 
 ---

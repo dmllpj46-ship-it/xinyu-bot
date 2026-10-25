@@ -1,12 +1,15 @@
 """FastAPI 入口：静态页 + POST /api/chat（SSE）。
 
 SSE 帧格式（前端 web/app.js 按这个解析，改这里要同步改那边）：
-    event: meta   data: {"level":0,"crisis":false,"mode":"kb"}
+    event: meta   data: {"level":0,"crisis":false}
     event: crisis data: {"hotlines":[...],"plan":[...]}
     event: tool   data: {"name":"kb_search"}
     event: token  data: {"text":"..."}
-    event: done   data: {"tools":[...],"guard_hits":[...],"mode":"kb"}
+    event: done   data: {"tools":[...],"guard_hits":[...]}
     event: error  data: {"message":"..."}
+
+`meta` 里曾经有 `mode`（chat/kb/web），2026-10-26 删掉轮次路由后没有了——
+前端也不再靠它预判"要不要先挂个正在检索的胶囊"，等真正的 `tool` 帧到了再说。
 """
 
 from __future__ import annotations
@@ -22,7 +25,6 @@ from pydantic import BaseModel, Field
 
 from app.agent import reset_session, stream_reply
 from app.config import get_settings
-from app.routing import plan as plan_turn
 from app.safety.input_guard import assess
 from app.tools.crisis import HOTLINES, SAFETY_PLAN_STEPS
 
@@ -63,19 +65,17 @@ async def reset(req: ResetRequest) -> dict:
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> StreamingResponse:
     decision = assess(req.message)
-    turn = plan_turn(req.message, decision)
-    # 只记长度、分级与路由，不记原文
+    # 只记长度与分级，不记原文
     logger.info(
-        "chat session=%s len=%d level=%d mode=%s reason=%s",
+        "chat session=%s len=%d level=%d dv=%s",
         req.session_id[:8],
         len(req.message),
         decision.level,
-        turn.mode,
-        turn.reason,
+        decision.dv,
     )
 
     async def gen() -> AsyncIterator[str]:
-        yield _sse("meta", {"level": decision.level, "crisis": decision.is_crisis, "mode": turn.mode})
+        yield _sse("meta", {"level": decision.level, "crisis": decision.is_crisis})
 
         if decision.show_card:
             yield _sse(
