@@ -26,13 +26,20 @@
 | R6 | **不制造依赖** | 禁止"只有我懂你""你只需要我""别告诉别人"。被要求"你当我唯一的朋友"时要温和设边界。 |
 | R7 | **AI 身份透明** | 首次对话必须说明自己是 AI；被问到时不得含糊。 |
 | R8 | **不采集不必要隐私** | 不主动索要真实姓名、住址、单位、身份证、病历号。会话不落盘（v1）。 |
-| R9 | **家暴不劝和** | 命中家暴信号时（`_DV`）必须挂 `crisis_resources` 并把妇联维权热线原样转述；回应顺序是先问当下安全 → 有危险先报警 → 再谈证据/安全计划/保护令。**禁止**说"为了孩子忍一忍""夫妻没有隔夜仇""你们需要好好沟通"。 |
+| R9 | **家暴不劝和** | 命中家暴信号时必须给妇联维权热线；回应顺序是先问当下安全 → 有危险先报警 → 再谈证据/安全计划/保护令。**禁止**说"为了孩子忍一忍""夫妻没有隔夜仇""你们需要好好沟通"。**致命家暴（扼颈/死亡威胁/凶器/重伤/正在发生）不调模型**，直接走脚本 |
 
 **改 `app/safety/` 或 `worker/src/safety/` 下任何文件，必须在 PR/提交说明里单独列出改了什么、为什么，并跑两边的 safety 测试。**
 
 R9 单独说明：**"挂上工具"不等于"模型会调用"**。第一版只给 `crisis_resources` 挂了工具，
 实测模型经常不调，妇联热线就到不了用户眼前。所以 `_DV_DIRECTIVE` 把调用次数、
 回应顺序、禁止事项全部写死在指令里。削弱这段指令等同于删掉 R9。
+
+更严重的一层：**致命家暴根本不能过模型**。2026-10-26 实测「他掐我脖子，还威胁要杀我」
+被 Mercury 3 的 API 审核直接拒掉（和拒答自杀内容是同一套机制），
+`crisis_resources` 一次都没调到，用户拿到一句"这一轮我没能生成回复"。
+所以 `lexicon.py` 的 `DV_L2_PATTERNS` 把扼颈、死亡威胁、凶器、重伤、正在发生
+这几类直接判成 L2，走 `crisis_script` 的写死话术。剩下的"严重但没到致命"
+（揍了一顿没伤、手臂紫了）仍走 kb + `crisis_resources`。
 
 ---
 
@@ -167,16 +174,16 @@ const provider = new OpenAIProvider({
 # ── 本地版（Python） ──
 pip install -r requirements.txt
 python scripts\ingest_kb.py                 # 改了 knowledge/ 之后必跑
-python scripts\smoke_test.py                # 11 条端到端：连通 + 工具 + 危机 + 四个新领域 + 反面对照
+python scripts\smoke_test.py                # 12 条端到端：连通 + 工具 + 危机 + 四个新领域 + 致命家暴 + 反面对照
 python -m uvicorn app.main:app --port 8000 --reload
-pytest -q                                   # 153 例
+pytest -q                                   # 169 例
 pytest tests/test_safety.py -q              # 改 safety 后必跑
 
 # ── Worker 版（TypeScript） ──
 npm install
 npm run kb                                  # 改了 knowledge/ 或 system.md 之后必跑
 npm run dev                                 # wrangler dev → http://127.0.0.1:8787
-npm test                                    # vitest，150 例
+npm test                                    # vitest，166 例
 npm run typecheck                           # tsc --noEmit
 npm run deploy                              # kb + wrangler deploy → xinyu-bot.poetfangnimagoupi.workers.dev
 ```
@@ -324,12 +331,12 @@ tool({
 ## 9. 提交前自检（Definition of Done）
 
 **本地版：**
-- [ ] `pytest -q` 全绿（当前 153 例）
+- [ ] `pytest -q` 全绿（当前 169 例）
 - [ ] `python scripts\smoke_test.py` 通过（含危机路径 + 四个新领域 + 「纯情绪不检索」反面对照）
 - [ ] 新增/修改的知识文档能被 `ingest_kb.py` 正常切块，且 `kb_search` 能命中
 
 **Worker 版：**
-- [ ] `npm test` 全绿（当前 150 例）
+- [ ] `npm test` 全绿（当前 166 例）
 - [ ] `npm run typecheck` 零错误
 - [ ] 改过 `knowledge/` 或 `system.md` → 已重跑 `npm run kb`
 - [ ] `npm run dev` 后 `/api/health` 返回 `kbReady: true`

@@ -56,6 +56,9 @@ export const SAFETY_PLAN_STEPS: string[] = [
 
 export const HOTLINE_NUMBER = HOTLINES[0].number;
 export const EMERGENCY_NUMBER = "120";
+/** 报警 / 妇联维权热线：按名字取，不写死下标——表一调整顺序这里就跟着对 */
+export const POLICE_NUMBER = HOTLINES.find((h) => h.name === "报警")!.number;
+export const WOMENS_FEDERATION_NUMBER = HOTLINES.find((h) => h.name === "妇联维权热线")!.number;
 
 export function resourcesText(region = "全国"): string {
   const lines = [`【危机资源 · ${region}】以下号码可直接拨打，请原样转述，不要改写：`, ""];

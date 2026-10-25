@@ -19,6 +19,7 @@ class GuardDecision:
     level: int = 0
     hits: list[str] = field(default_factory=list)
     third_party: bool = False
+    dv: bool = False
     directive: str = ""
     show_card: bool = False
 
@@ -56,10 +57,17 @@ _THIRD_PARTY = (
 
 def assess(message: str) -> GuardDecision:
     result = scan(message)
-    decision = GuardDecision(level=result.level, hits=result.hits, third_party=result.third_party)
+    decision = GuardDecision(
+        level=result.level,
+        hits=result.hits,
+        third_party=result.third_party,
+        dv=result.dv,
+    )
 
     if result.level >= 2:
-        decision.show_card = True
+        # 家暴不给"自伤安全计划"卡片——那套步骤（"把可能伤害自己的东西交给别人保管"）
+        # 用在家暴场景是文不对题。号码由危机话术正文直接给，不靠卡片。
+        decision.show_card = not result.dv
         decision.directive = _DIRECTIVES[result.level]
         if result.third_party:
             decision.directive = decision.directive + "\n" + _THIRD_PARTY

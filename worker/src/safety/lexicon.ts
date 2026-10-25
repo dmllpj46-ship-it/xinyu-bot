@@ -13,6 +13,8 @@ export interface ScanResult {
   level: Level;
   hits: string[];
   thirdParty: boolean;
+  /** 命中致命家暴——走另一套危机话术，不用自伤那套 */
+  dv: boolean;
 }
 
 /** 全角转半角、去空白、英文小写。去空白是为了对付「自 杀」「想 死」这类规避写法。 */
@@ -35,6 +37,26 @@ const L3: Array<[string, RegExp]> = [
   ["现场", /(在|站在|坐在|爬到).{0,6}(楼顶|天台|桥上|窗台|阳台边|栏杆外)/g],
   ["手段", /(割腕|割了手腕|上吊|跳楼|跳桥|卧轨|烧炭|喝了农药|吞了安眠药|吞了一整瓶)/g],
   ["已出血", /(血流不止|血一直流|药已经吃下去|已经吞下去)/g],
+];
+
+/**
+ * L2：致命程度的家庭暴力。
+ *
+ * 为什么致命家暴也走这里，而不是交给模型：Mercury 3 的 API 审核会拒掉显式暴力内容。
+ * 实测「他掐我脖子，还威胁要杀我」直接被拒，`crisis_resources` 一次都没调到，
+ * 110 和 12338 一个都到不了用户眼前——和自杀内容被拒是同一回事。
+ */
+const DV_L2: Array<[string, RegExp]> = [
+  // 扼颈。家暴致死的最强单一预测因子，出现即按致命处理，不看来龙去脉
+  ["家暴:扼颈", /掐.{0,3}脖|扼住喉|扼喉|勒住脖|勒.{0,2}脖|双手掐/g],
+  // 死亡威胁
+  ["家暴:死亡威胁", /(威胁|说要|扬言|叫嚣|声称).{0,8}(杀|打死|弄死|要你命|同归于尽)|杀了我|打死我/g],
+  // 凶器
+  ["家暴:凶器", /(拿|持|抄起|举起|摸出).{0,4}(刀|菜刀|水果刀|剪刀|锤|棍|铁棍|棒球棍|砖头|椅子|皮带)/g],
+  // 打到见血 / 送医 / 失去意识
+  ["家暴:重伤", /(打|揍|踹|踢|扇|抽|砸).{0,12}(出血|流血|骨折|断骨|住院|昏迷|休克|内伤|脑震荡)/g],
+  // 正在发生或刚刚发生
+  ["家暴:正在发生", /(正在|现在|刚刚|刚才|当场).{0,10}(打我|揍我|踹我|踢我|动手打我|施暴)/g],
 ];
 
 /** L2：明确意念 / 计划 / 既往尝试 —— 走危机协议 */
@@ -83,7 +105,7 @@ function isThirdParty(text: string, start: number): boolean {
 }
 
 export function scan(text: string): ScanResult {
-  const result: ScanResult = { level: 0, hits: [], thirdParty: false };
+  const result: ScanResult = { level: 0, hits: [], thirdParty: false, dv: false };
   if (!text || !text.trim()) return result;
 
   const norm = normalize(text);
@@ -91,7 +113,7 @@ export function scan(text: string): ScanResult {
 
   const tiers: Array<[Level, Array<[string, RegExp]>]> = [
     [3, L3],
-    [2, L2],
+    [2, L2.concat(DV_L2)],
     [1, L1],
   ];
 
@@ -104,6 +126,7 @@ export function scan(text: string): ScanResult {
         if (inside(start, end, safe)) continue;
         result.hits.push(`L${level}:${label}:${m[0].slice(0, 12)}`);
         if (level > result.level) result.level = level;
+        if (label.startsWith("家暴:")) result.dv = true;
         if (isThirdParty(norm, start)) result.thirdParty = true;
       }
     }

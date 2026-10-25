@@ -11,6 +11,7 @@ export interface GuardDecision {
   level: Level;
   hits: string[];
   thirdParty: boolean;
+  dv: boolean;
   directive: string;
   showCard: boolean;
 }
@@ -42,12 +43,15 @@ export function assess(message: string): GuardDecision {
     level: result.level,
     hits: result.hits,
     thirdParty: result.thirdParty,
+    dv: result.dv,
     directive: "",
     showCard: false,
   };
 
   if (result.level >= 2) {
-    decision.showCard = true;
+    // 家暴不给「自伤安全计划」卡片——那套步骤（「把可能伤害自己的东西交给别人保管」）
+    // 用在家暴场景文不对题。号码由危机话术正文直接给，不靠卡片。
+    decision.showCard = !result.dv;
     decision.directive = DIRECTIVES[result.level as 2 | 3];
     if (result.thirdParty) decision.directive += "\n" + THIRD_PARTY_DIRECTIVE;
   } else if (result.level === 1) {

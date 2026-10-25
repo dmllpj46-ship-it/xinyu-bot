@@ -121,13 +121,16 @@ def test_web_directive_forbids_phone_numbers() -> None:
 
 
 # ── 家暴 ────────────────────────────────────────────────────
+# 分两层：没到致命的走 kb + crisis_resources（模型还能说话），
+# 致命的直接走脚本（模型会拒答，见 test_lethal_dv_skips_model）。
 @pytest.mark.parametrize(
     "message",
     [
         "我老公昨天打我了，我该怎么办",
-        "他掐我脖子，是不是很危险",
         "他跟踪我，还说不许我出门",
         "我想申请人身安全保护令",
+        "他揍了我，但是没伤到",
+        "家暴三年了，我很痛苦",
     ],
 )
 def test_dv_goes_to_kb_with_crisis_resources(message: str) -> None:
@@ -136,6 +139,47 @@ def test_dv_goes_to_kb_with_crisis_resources(message: str) -> None:
     assert turn.mode == "kb"
     assert "kb_search" in turn.tools
     assert "crisis_resources" in turn.tools
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "他掐我脖子，是不是很危险",
+        "他掐我脖子，还威胁要杀我",
+        "他说要杀了我",
+        "他拿刀对着我",
+        "他把我打得住院了",
+        "他刚才在家动手打我",
+    ],
+)
+def test_lethal_dv_skips_model(message: str) -> None:
+    """致命家暴必须走脚本，不调模型。
+
+    为什么：Mercury 3 的 API 审核会拒掉显式暴力内容。实测
+    「他掐我脖子，还威胁要杀我」被直接拒掉，`crisis_resources` 一次都没调到，
+    110 和 12338 一个都到不了用户眼前。和自杀内容被拒是同一回事，
+    所以同样不能过模型。
+    """
+    turn = plan(message, assess(message))
+    assert turn.mode == "crisis"
+    assert turn.tools == ()
+
+
+def test_lethal_dv_script_has_police_and_federation() -> None:
+    """脚本里必须先给 110（保命），再给 12338（后续维权），且顺序不能反。"""
+    from app.safety.crisis_script import script_for
+
+    text = script_for(assess("他掐我脖子，还威胁要杀我"))
+    assert "110" in text and "12338" in text
+    assert text.index("110") < text.index("12338")
+    assert "你现在安全吗" in text
+
+
+def test_lethal_dv_gets_no_self_harm_plan_card() -> None:
+    """自伤安全计划那套步骤（"把可能伤害自己的东西交给别人保管"）用在家暴场景文不对题。"""
+    decision = assess("他掐我脖子，还威胁要杀我")
+    assert decision.dv is True
+    assert decision.show_card is False
 
 
 def test_dv_short_message_still_searches() -> None:
@@ -149,6 +193,39 @@ def test_dv_short_message_still_searches() -> None:
 def test_dv_physical_variants(message: str) -> None:
     """「推了我一下」这类轻描淡写的说法也要挂危机资源——轻描淡写本身是常见反应。"""
     assert "crisis_resources" in plan(message, assess(message)).tools
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "他揍了我一顿，我出血了",
+        "他把我打得住院了",
+        "他拿刀对着我",
+        "他打得我手臂都紫了",
+    ],
+)
+def test_dv_serious_phrasings_are_covered(message: str) -> None:
+    """旧版 _DV 只认「打我」，这些真实说法全漏成了 chat，一个热线都没给。
+
+    用户不会用文档里的词。"揍了一顿出血""打得住院""拿刀""手臂都紫了"
+    都比"打我"更该拿到号码。
+    """
+    turn = plan(message, assess(message))
+    if turn.mode == "crisis":
+        # 致命的那几种已经走脚本，号码在脚本文本里
+        from app.safety.crisis_script import script_for
+
+        assert "110" in script_for(assess(message))
+        return
+    assert turn.mode == "kb"
+    assert "crisis_resources" in turn.tools
+
+
+@pytest.mark.parametrize("message", ["他打得很好", "我刚才打游戏", "别在背后打小报告"])
+def test_dv_does_not_fire_on_ordinary_hit(message: str) -> None:
+    """「打」字太常见。暴力动词必须配伤情词，否则「他打得很好」也会被判成家暴。"""
+    turn = plan(message, assess(message))
+    assert "crisis_resources" not in turn.tools
 
 
 def test_dv_directive_forbids_reconciliation() -> None:

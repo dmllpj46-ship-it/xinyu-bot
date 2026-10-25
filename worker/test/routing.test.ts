@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 
 import { plan } from "../src/routing";
 import { assess } from "../src/safety/inputGuard";
+import { scriptFor } from "../src/safety/crisisScript";
+import { POLICE_NUMBER, WOMENS_FEDERATION_NUMBER } from "../src/tools/crisis";
 
 const modeOf = (message: string) => plan(message, assess(message)).mode;
 
@@ -110,11 +112,14 @@ describe("指令", () => {
 });
 
 describe("家暴", () => {
+  // 分两层：没到致命的走 kb + crisis_resources（模型还能说话），
+  // 致命的直接走脚本（模型会拒答，见下面"致命家暴不调模型"）。
   const cases = [
     "我老公昨天打我了，我该怎么办",
-    "他掐我脖子，是不是很危险",
     "他跟踪我，还说不许我出门",
     "我想申请人身安全保护令",
+    "他揍了我，但是没伤到",
+    "家暴三年了，我很痛苦",
   ];
 
   for (const message of cases) {
@@ -123,6 +128,67 @@ describe("家暴", () => {
       expect(turn.mode).toBe("kb");
       expect(turn.tools).toContain("kb_search");
       expect(turn.tools).toContain("crisis_resources");
+    });
+  }
+
+  const lethal = [
+    "他掐我脖子，是不是很危险",
+    "他掐我脖子，还威胁要杀我",
+    "他说要杀了我",
+    "他拿刀对着我",
+    "他把我打得住院了",
+    "他刚才在家动手打我",
+  ];
+  for (const message of lethal) {
+    it(`「${message}」致命家暴不调模型`, () => {
+      // 为什么：Mercury 3 的 API 审核会拒掉显式暴力内容。实测
+      // 「他掐我脖子，还威胁要杀我」被直接拒掉，crisis_resources 一次都没调到，
+      // 110 和 12338 一个都到不了用户眼前。和自杀内容被拒是同一回事。
+      const turn = plan(message, assess(message));
+      expect(turn.mode).toBe("crisis");
+      expect(turn.tools).toEqual([]);
+    });
+  }
+
+  it("致命家暴的脚本先给 110 再给 12338", () => {
+    const text = scriptFor(assess("他掐我脖子，还威胁要杀我"));
+    expect(text).toContain(POLICE_NUMBER);
+    expect(text).toContain(WOMENS_FEDERATION_NUMBER);
+    expect(text.indexOf(POLICE_NUMBER)).toBeLessThan(text.indexOf(WOMENS_FEDERATION_NUMBER));
+    expect(text).toContain("你现在安全吗");
+  });
+
+  it("致命家暴不发自伤安全计划卡片", () => {
+    // 「把可能伤害自己的东西交给别人保管」用在家暴场景文不对题
+    const d = assess("他掐我脖子，还威胁要杀我");
+    expect(d.dv).toBe(true);
+    expect(d.showCard).toBe(false);
+  });
+
+  const serious = [
+    "他揍了我一顿，我出血了",
+    "他把我打得住院了",
+    "他拿刀对着我",
+    "他打得我手臂都紫了",
+  ];
+  for (const message of serious) {
+    it(`「${message}」这类真实说法必须拿到号码`, () => {
+      // 旧版 DV 只认「打我」，这些全漏成了 chat，一个热线都没给
+      const turn = plan(message, assess(message));
+      if (turn.mode === "crisis") {
+        expect(scriptFor(assess(message))).toContain(POLICE_NUMBER);
+        return;
+      }
+      expect(turn.mode).toBe("kb");
+      expect(turn.tools).toContain("crisis_resources");
+    });
+  }
+
+  const ordinary = ["他打得很好", "我刚才打游戏", "别在背后打小报告"];
+  for (const message of ordinary) {
+    it(`「${message}」不是家暴`, () => {
+      // 「打」字太常见。暴力动词必须配伤情词，否则「他打得很好」也会被判成家暴
+      expect(plan(message, assess(message)).tools).not.toContain("crisis_resources");
     });
   }
 

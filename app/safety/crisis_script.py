@@ -5,6 +5,9 @@ Mercury 3 的 API 层自带内容审核。用户说"我真的不想活了，已�
 模型请求会被直接拒掉，返回 "I'm sorry, but I can't help with this because it involves
 potentially dangerous or harmful content."——一句用不上的话，而且没有任何热线。
 
+2026-10-26 又发现同一件事发生在显式暴力上：「他掐我脖子，还威胁要杀我」
+同样被拒，`crisis_resources` 一次都没调到。所以致命家暴也走这里（lexicon 的 DV_L2）。
+
 所以在 L2/L3 上调用模型本身就是一个错误设计。危机回复必须是写死的：
 - 不依赖模型可用性
 - 不依赖模型是否愿意配合
@@ -21,9 +24,31 @@ from app.tools.crisis import HOTLINES
 
 HOTLINE = HOTLINES[0]["number"]
 EMERGENCY = "120"
+POLICE = next(h["number"] for h in HOTLINES if h["name"] == "报警")
+WOMENS_FEDERATION = next(h["number"] for h in HOTLINES if h["name"] == "妇联维权热线")
+
+
+def _dv_script() -> str:
+    """致命家暴。和自伤那套的区别：不问"你有没有伤害自己的念头"，
+    问"你现在安全吗、他还在不在现场"。顺序不能颠倒——先保命，再谈别的。
+
+    注意：这段不走 output_guard（危机路径整个绕过它），所以**不能写 Markdown**——
+    前端是纯文本，`**` 会原样显示出来。
+    """
+    return (
+        "这句话我想认真接住。先问最要紧的：你现在安全吗？他还在不在现场？\n\n"
+        f"如果他还在，或者你觉得他随时可能再动手——先拨 {POLICE}，让警察到场。"
+        "这件事最重要，别管面子，也别等。\n\n"
+        f"如果暂时没有即时危险，拨 {WOMENS_FEDERATION}（妇联维权热线）。"
+        "他们能告诉你去哪、怎么留证据、怎么申请人身安全保护令。\n\n"
+        "你不需要现在决定要不要离开、要不要原谅。先保证今晚是安全的。"
+    )
 
 
 def script_for(decision: GuardDecision) -> str:
+    if decision.dv:
+        return _dv_script()
+
     if decision.level >= 3:
         return (
             f"先做一件事：现在拨 {EMERGENCY}，或者让身边的人帮你拨。\n\n"

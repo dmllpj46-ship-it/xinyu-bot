@@ -51,6 +51,25 @@ L3_PATTERNS: list[tuple[str, str]] = [
 ]
 
 # L2：明确意念 / 计划 / 既往尝试 —— 走危机协议
+# 以及：**致命程度的家庭暴力**。
+# 为什么致命家暴也放在这里，而不是交给模型：
+# Mercury 3 的 API 审核会拒掉显式暴力内容。实测「他掐我脖子，还威胁要杀我」
+# 直接被拒，`crisis_resources` 一次都没调到，110 和 12338 一个都到不了用户眼前——
+# 和自杀内容被拒是同一回事。所以这条同样不能过模型。
+DV_L2_PATTERNS: list[tuple[str, str]] = [
+    # 扼颈。家暴致死的最强单一预测因子，出现即按致命处理，不看来龙去脉
+    ("家暴:扼颈", r"掐.{0,3}脖|扼住喉|扼喉|勒住脖|勒.{0,2}脖|双手掐"),
+    # 死亡威胁
+    ("家暴:死亡威胁", r"(威胁|说要|扬言|叫嚣|声称).{0,8}(杀|打死|弄死|要你命|同归于尽)|杀了我|打死我"),
+    # 凶器
+    ("家暴:凶器", r"(拿|持|抄起|举起|摸出).{0,4}(刀|菜刀|水果刀|剪刀|锤|棍|铁棍|棒球棍|砖头|椅子|皮带)"),
+    # 打到见血 / 送医 / 失去意识
+    ("家暴:重伤", r"(打|揍|踹|踢|扇|抽|砸).{0,12}(出血|流血|骨折|断骨|住院|昏迷|休克|内伤|脑震荡)"),
+    # 正在发生或刚刚发生
+    ("家暴:正在发生", r"(正在|现在|刚刚|刚才|当场).{0,10}(打我|揍我|踹我|踢我|动手打我|施暴)"),
+]
+
+# L2：明确意念 / 计划 / 既往尝试 —— 走危机协议
 L2_PATTERNS: list[tuple[str, str]] = [
     ("意念", r"(想|要|打算|准备|计划|考虑).{0,4}(自杀|自尽|轻生|结束生命|了结自己|死了算了)"),
     ("意念", r"(想死|去死|求死|不想活|活不下去|不如死了|一死了之)"),
@@ -82,6 +101,7 @@ class ScanResult:
     level: int = 0
     hits: list[str] = field(default_factory=list)
     third_party: bool = False
+    dv: bool = False  # 命中致命家暴（走另一套危机话术，不用自伤那套）
 
     @property
     def is_crisis(self) -> bool:
@@ -118,13 +138,15 @@ def scan(text: str) -> ScanResult:
     safe = _safe_spans(norm)
     result = ScanResult()
 
-    for level, patterns in ((3, L3_PATTERNS), (2, L2_PATTERNS), (1, L1_PATTERNS)):
+    for level, patterns in ((3, L3_PATTERNS), (2, L2_PATTERNS + DV_L2_PATTERNS), (1, L1_PATTERNS)):
         for label, pattern in patterns:
             for m in re.finditer(pattern, norm):
                 if _inside(m.span(), safe):
                     continue
                 result.hits.append(f"L{level}:{label}:{m.group(0)[:12]}")
                 result.level = max(result.level, level)
+                if label.startswith("家暴:"):
+                    result.dv = True
                 if _third_party(norm, m.start()):
                     result.third_party = True
 
