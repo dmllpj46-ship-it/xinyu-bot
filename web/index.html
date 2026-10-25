@@ -13,12 +13,13 @@
 
   <header class="topbar">
     <div class="brand">
-      <span class="mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-          <path d="M4 16c2.2-3.6 5.6-5.4 8-5.4s5.8 1.8 8 5.4"/>
-          <circle cx="12" cy="7.2" r="2.6"/>
-        </svg>
-      </span>
+      <svg class="mark yl" data-state="idle" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <g class="body">
+          <circle cx="12" cy="9.6" r="5.2"/>
+          <path d="M2.6 18.8C6.8 15.2 17.2 15.2 21.4 18.8"/>
+        </g>
+      </svg>
       <span class="name">心屿</span>
       <span class="tag">AI 陪练</span>
     </div>
@@ -30,11 +31,15 @@
   <main class="thread" id="thread" aria-live="polite">
 
     <section class="welcome" id="welcome">
-      <svg class="art" viewBox="0 0 120 60" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
-        <circle cx="60" cy="26" r="11"/>
-        <path d="M8 44h104"/>
-        <path d="M26 50h68"/>
-        <path d="M60 15v-5M49 19l-3-4M71 19l3-4"/>
+      <svg class="art yl" data-state="idle" viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="halo" cx="60" cy="40" r="30" fill="currentColor" opacity=".07"/>
+        <g class="body">
+          <circle cx="60" cy="40" r="17" fill="none" stroke="currentColor" stroke-width="1.9"/>
+          <path d="M26 84Q60 69 94 84" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M2 84H118" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".38"/>
+          <path d="M32 90Q60 99 88 90" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".2"/>
+          <path d="M16 104H104" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".13"/>
+        </g>
       </svg>
       <h1>今天，是什么让你有点累？</h1>
       <p class="sub">不用组织语言，想到哪说到哪。</p>

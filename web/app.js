@@ -16,6 +16,14 @@
   const tplMe = document.getElementById("tpl-me");
   const tplCrisis = document.getElementById("tpl-crisis");
 
+  // 屿灯：顶栏那盏 20px 的灯是唯一的状态载体。
+  // 它不靠表情说话，靠呼吸节奏——慢=待机，快=在想，起伏=在说。
+  const glyph = document.querySelector(".mark.yl");
+  const art = document.querySelector(".art.yl");
+  function setGlyph(el, state) {
+    if (el && el.dataset.state !== state) el.dataset.state = state;
+  }
+
   const SESSION_KEY = "xinyu.session";
   let sessionId = sessionStorage.getItem(SESSION_KEY);
   if (!sessionId) {
@@ -169,6 +177,7 @@
     autoGrow();
     hideWelcome();
     addMe(text);
+    setGlyph(glyph, "thinking");
 
     const botNode = addBot();
     const textEl = botNode.querySelector(".text");
@@ -222,6 +231,7 @@
             addToolPill(botNode, label);
           } else if (event === "token") {
             clearToolPill(botNode);
+            setGlyph(glyph, "speaking");
             typer.push(data.text || "");
           } else if (event === "error") {
             typer.push(data.message || "出了点问题，稍后再试。");
@@ -235,6 +245,7 @@
       typer.flushNow();
       clearToolPill(botNode);
       botNode.classList.remove("streaming");
+      setGlyph(glyph, "idle");
       if (gotCrisis) document.body.classList.add("crisis");
 
       const answer = textEl.textContent.trim();
@@ -258,6 +269,7 @@
   input.addEventListener("input", () => {
     autoGrow();
     sendBtn.disabled = busy || !input.value.trim();
+    setGlyph(art, input.value.trim() ? "listening" : "idle");
   });
 
   input.addEventListener("keydown", (e) => {
@@ -278,6 +290,7 @@
     input.value = chip.textContent.trim();
     autoGrow();
     sendBtn.disabled = false;
+    setGlyph(art, "listening");
     input.focus();
   });
 
@@ -295,6 +308,8 @@
     messages.replaceChildren();
     welcome.classList.remove("hidden");
     document.body.classList.remove("crisis");
+    setGlyph(glyph, "idle");
+    setGlyph(art, "idle");
     history.length = 0;
     input.value = "";
     autoGrow();
