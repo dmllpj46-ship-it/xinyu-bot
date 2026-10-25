@@ -532,8 +532,8 @@ npm run dev                                    # Worker 版 → http://127.0.0.1
 ## 11. 部署到 Cloudflare Workers
 
 > **当前线上地址：<https://xinyu-bot.poetfangnimagoupi.workers.dev>**
-> 最近部署 2026-10-25，Version ID `1b19ba05-45d3-463d-9533-e8b7c7643024`，
-> 14 篇 / 112 块知识库，工具全部常挂。本次只改前端动效，后端逻辑未动。
+> 最近部署 2026-10-25，Version ID `4cdef705-dd50-4d82-a9a9-5e1bfe53e137`，
+> 14 篇 / 112 块知识库，工具全部常挂。本次为重复部署，产物与上一版逐字节相同。
 
 | 部署日期 | Version ID | 内容 |
 |---|---|---|
@@ -551,7 +551,8 @@ npm run dev                                    # Worker 版 → http://127.0.0.1
 | 2026-10-26 | `084c1840-711e-4129-87d8-e329e431c681` | 确认线上 = `2472262`（内容同上一版，重跑 check_opening 3/3 + live_check 10/10） |
 | 2026-10-25 | `93fbda3b-746a-478a-bf3c-89f81f6e9197` | **屿灯形象上线**：`.mark` / `.art` 换成统一母题，纯 `web/` 改动，后端零变更 |
 | 2026-10-25 | `76517601-bb69-4eef-949c-a408dabc8ad1` | 修「形象不动 + 一发消息就消失」：幅度 1.035→1.06 且只动灯，消息加 26px 头像 |
-| 2026-10-25 | `1b19ba05-45d3-463d-9533-e8b7c7643024` | 动效重做：缩放改 `translateY` 浮沉（顶点位移 1.24px → 6.82px），修 `.mark` 的 `--lift` 被 `.yl` 盖掉的层叠 bug（当前） |
+| 2026-10-25 | `1b19ba05-45d3-463d-9533-e8b7c7643024` | 动效重做：缩放改 `translateY` 浮沉（顶点位移 1.24px → 6.82px），修 `.mark` 的 `--lift` 被 `.yl` 盖掉的层叠 bug |
+| 2026-10-25 | `4cdef705-dd50-4d82-a9a9-5e1bfe53e137` | 重复部署：`web/` 与上一版逐字节相同（wrangler 报 no updated asset files），仅换 Version ID（当前） |
 
 ### 11.1 改造要点（从 FastAPI 迁到 Worker 时踩的坑）
 
