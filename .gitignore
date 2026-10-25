@@ -7,3 +7,11 @@ data/*.json
 .pytest_cache/
 .ruff_cache/
 .DS_Store
+
+.dev.vars
+node_modules/
+worker/src/generated/
+.wrangler/
+
+# 本地 agent 工作记录，不属于项目内容
+.workbuddy-ai/

@@ -1,0 +1,27 @@
+{
+  "name": "xinyu-bot",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "心屿 · 心理陪练 Bot（Cloudflare Workers 部署版）",
+  "scripts": {
+    "kb": "node scripts/build-kb.mjs",
+    "predev": "npm run kb",
+    "dev": "wrangler dev",
+    "predeploy": "npm run kb",
+    "deploy": "wrangler deploy",
+    "pretest": "npm run kb",
+    "test": "vitest run",
+    "pretypecheck": "npm run kb",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openai/agents": "^0.21.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.152.0"
+  }
+}

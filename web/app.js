@@ -24,6 +24,10 @@
   }
   let busy = false;
 
+  // 会话历史存在浏览器里（Worker 版是无状态的，服务端不留任何对话记录）
+  const history = [];
+  const MAX_HISTORY = 10;
+
   // ── 补间打字 ─────────────────────────────────────────────
   class Typer {
     constructor(el, speed = 12) {
@@ -175,7 +179,11 @@
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, message: text }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          message: text,
+          history: history.slice(-MAX_HISTORY),
+        }),
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
@@ -226,6 +234,13 @@
       clearToolPill(botNode);
       botNode.classList.remove("streaming");
       if (gotCrisis) document.body.classList.add("crisis");
+
+      const answer = textEl.textContent.trim();
+      if (answer) {
+        history.push({ role: "user", content: text }, { role: "assistant", content: answer });
+        if (history.length > MAX_HISTORY * 2) history.splice(0, history.length - MAX_HISTORY * 2);
+      }
+
       busy = false;
       sendBtn.disabled = !input.value.trim();
       input.focus();
@@ -278,6 +293,7 @@
     messages.replaceChildren();
     welcome.classList.remove("hidden");
     document.body.classList.remove("crisis");
+    history.length = 0;
     input.value = "";
     autoGrow();
     sendBtn.disabled = true;

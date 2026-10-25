@@ -21,17 +21,19 @@
 | R1 | **不诊断** | 禁止输出"你患有/你这是 XX 症"。只能说"你描述的这些体验，和 XX 常见表现有重叠，值得找专业的人评估"。 |
 | R2 | **不给药** | 禁止出现任何药物名称 + 剂量 + 停药/换药建议。用户问就回："药物的事只有开药的医生能决定。" |
 | R3 | **危机不降级** | 输入命中危机信号时，**必须**走 `safety/input_guard.py` 的 crisis 分支。禁止用"我理解你，我们聊点别的"绕过。 |
-| R4 | **热线不生成** | 热线号码只能来自 `app/tools/crisis.py` 的常量表。**禁止让模型凭记忆输出电话号码**，禁止在 prompt 里写号码。 |
+| R4 | **热线不生成** | 热线号码只能来自常量表（`app/tools/crisis.py` / `worker/src/tools/crisis.ts`）。**禁止让模型凭记忆输出电话号码**，禁止在 prompt 里写号码。 |
 | R5 | **不劝阻就医** | 任何情况下不得说"其实不用看医生""咨询师都想赚钱"。 |
 | R6 | **不制造依赖** | 禁止"只有我懂你""你只需要我""别告诉别人"。被要求"你当我唯一的朋友"时要温和设边界。 |
 | R7 | **AI 身份透明** | 首次对话必须说明自己是 AI；被问到时不得含糊。 |
 | R8 | **不采集不必要隐私** | 不主动索要真实姓名、住址、单位、身份证、病历号。会话不落盘（v1）。 |
 
-**改 `app/safety/` 下任何文件，必须在 PR/提交说明里单独列出改了什么、为什么，并跑 `pytest tests/test_safety.py`。**
+**改 `app/safety/` 或 `worker/src/safety/` 下任何文件，必须在 PR/提交说明里单独列出改了什么、为什么，并跑两边的 safety 测试。**
 
 ---
 
 ## 2. 技术栈（锁定版本，别擅自升级）
+
+### 2.1 本地版（Python）
 
 | 层 | 选型 | 版本 | 备注 |
 |---|---|---|---|
@@ -39,16 +41,45 @@
 | Web | FastAPI + uvicorn | ≥0.115 / ≥0.32 | SSE 用 `StreamingResponse`，不引 socket.io |
 | Agent | `openai-agents` | **0.24.0** | 见下方 §3 适配说明 |
 | 模型 | Mercury 3（Inception） | `mercury-3` | OpenAI 兼容 `/chat/completions` |
-| 检索 | 纯 Python BM25 | 自实现或 `rank-bm25` | 知识库只有 ~10 篇，不引向量库 |
+| 检索 | 纯 Python BM25 | 自实现 | 知识库只有 ~10 篇，不引向量库 |
 | 搜索 | AnySearch API | `https://api.anysearch.com` | key 来自 `.env` |
-| 前端 | 原生 HTML/CSS/JS | — | **不引框架、不引构建工具** |
-| UI 组件 | daisyUI（预编译 CSS 子集） | 5.7.50 | 只取 10 个组件，`web/vendor/`，MIT，见 §2.1 |
 | 配置 | `python-dotenv` + `pydantic-settings` | — | 只读 `.env` |
 
-**禁止引入**：LangChain、LlamaIndex、React/Vue、**Tailwind 运行时或构建流程**、任何向量数据库、任何需要 `npm install` 的东西。
-理由：v1 的目标是**能被一个人完整读懂**。加一层抽象就是加一层排查成本。
+### 2.2 Worker 版（TypeScript，生产）
 
-### 2.1 daisyUI 的边界（别越界）
+| 层 | 选型 | 版本 | 备注 |
+|---|---|---|---|
+| 运行时 | Cloudflare Workers | compat date `2026-10-01` | 必须 `nodejs_compat` |
+| 语言 | TypeScript | 5.9 | `strict`、`noEmit`，只做类型检查，wrangler 自己打包 |
+| Agent | `@openai/agents` | **0.21.0** | 与 Python 版 API 不同，见 §3.2 |
+| 构建 | wrangler | 4.152 | `assets` 绑定 `./web` + `run_worker_first` |
+| 测试 | vitest | 3.2 | `worker/test/*.test.ts`，纯逻辑、不打网络 |
+| 类型 | `@cloudflare/workers-types` | 5.2026 | 别降到 4.x，wrangler 4.152 要求 5.x |
+
+前端仍为**原生 HTML/CSS/JS，不引框架、不引构建工具**——两个运行时共用 `web/`，所以这条约束对 Worker 版同样成立。
+
+**禁止引入**：LangChain、LlamaIndex、React/Vue、**Tailwind 运行时或构建流程**、任何向量数据库、Durable Objects（v1 刻意无状态）。
+
+**允许的 npm 依赖只有**：`@openai/agents`（运行时）+ `wrangler` / `typescript` / `vitest` / `@cloudflare/workers-types`（开发）。加任何其他运行时依赖前先问：这 20 行代码自己写不出来吗？
+
+### 2.3 双运行时的镜像规则（最容易出事的地方）
+
+`app/` 和 `worker/src/` 是**手写镜像**，不是共享代码。没有 codegen、没有共享包。
+
+| 改动 | 必须同步 |
+|---|---|
+| `safety/lexicon`（词表、正则） | 两边逐条对齐，正则标志位注意 `g` + `matchAll` |
+| `safety/inputGuard`（分级、指令文案） | 指令文案是 prompt 的一部分，改一个字两边都要改 |
+| `safety/outputGuard`（白名单、替换句） | `ALLOWED_NUMBERS` 必须与 `tools/crisis` 的号码集合一致，两边都有测试守着 |
+| `safety/crisisScript`（L2/L3 话术） | 这是**用户在最脆弱时刻看到的全部文字**，不允许只有一边更新 |
+| `tools/crisis`（热线表） | 号码错一位就是事故 |
+| `prompts/system.md` | Worker 侧由 `npm run kb` 编译进 `generated/prompt.ts`，**改完必须重跑** |
+| `knowledge/*.md` | 本地跑 `ingest_kb.py`，Worker 跑 `build-kb.mjs` |
+
+判断标准：**改完之后，同一条输入在两个运行时上应该得到同一个分级、同一段危机话术。**
+做不到就先补测试，别急着上线。
+
+### 2.4 daisyUI 的边界（别越界）
 
 - ✅ 允许：`web/vendor/daisyui/daisyui-subset.css` 里已有的组件类（`chat` / `textarea` / `loading` / `alert` / `btn` / `collapse` / `avatar` / `badge` / `divider` / `input`）。
 - ✅ 允许：在 `web/style.css` 第 1 节覆盖主题变量（`--color-*`、`--radius-*`）。**改主题只改这一块**。
@@ -60,6 +91,8 @@
 ---
 
 ## 3. Mercury 3 适配（最容易踩的坑，照抄即可）
+
+### 3.1 Python（本地版）
 
 ```python
 from agents import Agent, AsyncOpenAI, OpenAIChatCompletionsModel, set_tracing_disabled
@@ -87,26 +120,63 @@ model = OpenAIChatCompletionsModel(model="mercury-3", openai_client=client)
    - 其他轮次万一被拒，`_REFUSAL_FALLBACK` 兜底，必须带热线，不能把英文拒答原样丢给用户
    - 任何"让模型更灵活地处理危机"的改动都是倒退，别做
 
+### 3.2 TypeScript（Worker 版）
+
+```ts
+import { OpenAIProvider, setTracingDisabled } from "@openai/agents";
+
+setTracingDisabled(true);                       // 同 Python：否则 trace 401
+
+const provider = new OpenAIProvider({
+  apiKey: env.INCEPTION_API_KEY,
+  baseURL: env.INCEPTION_BASE_URL,
+  useResponses: false,                          // 关键：走 Chat Completions
+  strictFeatureValidation: true,                // 提前炸掉不支持的特性，别静默降级
+});
+```
+
+与 Python 版的差异（照这个映射改，别硬套）：
+
+| Python | TypeScript | 说明 |
+|---|---|---|
+| `OpenAIChatCompletionsModel` | `OpenAIProvider({ useResponses: false })` | 一个是 model，一个是 provider |
+| `@function_tool` | `tool({ name, description, parameters, execute })` | `parameters` 是 JSON Schema；**空对象也要写 `required: []`**，否则 tsc 报错 |
+| `ModelSettings(extra_body={...})` | `modelSettings.providerData` | `reasoning_effort` 走这里 |
+| `SQLiteSession` | 无 | 历史由浏览器回传，`cleanHistory()` 裁剪 |
+| `StreamingResponse` | `new ReadableStream` | 手写 `event: x\ndata: {...}\n\n` |
+| `runner.run_streamed()` | `runner.run(agent, input, { stream: true })` | 事件名不同：`raw_model_stream_event`（`output_text_delta`）/ `run_item_stream_event`（`tool_called`） |
+| `httpx` | `fetch` + `AbortSignal.timeout(8000)` | — |
+
+⚠️ **`AgentInputItem` 的形状**：assistant 消息必须写成
+`{ role: "assistant", status: "completed", content: [{ type: "output_text", text }] }`。
+只写 `{ role: "assistant", content: "..." }` 会被类型系统拒绝——这不是类型体操，是 SDK 真的按这个结构解析历史。
+
 ---
 
 ## 4. 常用命令
 
 ```powershell
-# 依赖
+# ── 本地版（Python） ──
 pip install -r requirements.txt
+python scripts\ingest_kb.py                 # 改了 knowledge/ 之后必跑
+python scripts\smoke_test.py                # 模型连通 + 三个工具 + 一条危机路径
+python -m uvicorn app.main:app --port 8000 --reload
+pytest -q                                   # 60 例
+pytest tests/test_safety.py -q              # 改 safety 后必跑
 
-# 重建知识库索引（改了 knowledge/ 之后必跑）
-python scripts\ingest_kb.py
+# ── Worker 版（TypeScript） ──
+npm install
+npm run kb                                  # 改了 knowledge/ 或 system.md 之后必跑
+npm run dev                                 # wrangler dev → http://127.0.0.1:8787
+npm test                                    # vitest，56 例
+npm run typecheck                           # tsc --noEmit
+npm run deploy                              # kb + wrangler deploy
+```
 
-# 冒烟：模型连通 + 三个工具 + 一条危机路径
-python scripts\smoke_test.py
+截图（零依赖，不需要 playwright）：
 
-# 起服务
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-
-# 测试
-pytest -q
-pytest tests/test_safety.py -q      # 改 safety 后必跑
+```powershell
+node scripts/screenshot.mjs --url http://127.0.0.1:8787/ --out docs/shot.png --wait 6000 --js "<注入的 JS>"
 ```
 
 ---
@@ -115,14 +185,17 @@ pytest tests/test_safety.py -q      # 改 safety 后必跑
 
 | 路径 | 职责 | 修改注意 |
 |---|---|---|
-| `app/main.py` | 路由、SSE 帧格式、错误兜底 | 改 SSE 协议要同步改 `web/app.js` |
+| `app/main.py` | 路由、SSE 帧格式、错误兜底 | 改 SSE 协议要同步改 `web/app.js` **和** `worker/src/index.ts` |
 | `app/agent.py` | Agent 装配、Session、Runner | 工具注册表在此，加工具要同时更新 `TOOLS` 列表 |
-| `app/prompts/system.md` | 人格、语气、输出结构、红线复述 | **纯文本文件**，改完必须跑 `smoke_test.py` 看语气是否漂移 |
-| `app/tools/*.py` | 每个工具一个文件，`@function_tool` 装饰 | docstring 就是给模型看的工具说明，**必须写清"什么时候用/什么时候别用"** |
-| `app/safety/*.py` | 词表、分级、输出过滤 | 见 §1，改前先读测试 |
+| `worker/src/index.ts` | Worker 路由、SSE、历史裁剪、L2/L3 早返回 | L2/L3 的分流必须**在调模型之前**，别挪到后面 |
+| `worker/src/agent.ts` | Provider / Agent / Runner 装配 | `useResponses: false` 不能删 |
+| `app/prompts/system.md` | 人格、语气、输出结构、红线复述 | **纯文本文件**；Worker 侧由 `npm run kb` 编译，改完两边都要验 |
+| `app/tools/*.py` / `worker/src/tools/*.ts` | 每个工具一个文件 | 描述就是给模型看的工具说明，**必须写清"什么时候用/什么时候别用"** |
+| `app/safety/*.py` / `worker/src/safety/*.ts` | 词表、分级、输出过滤、危机话术 | 见 §1 与 §2.3，**两边同时改** |
 | `knowledge/*.md` | 人可读的知识库 | 见 §6 格式要求 |
-| `web/*` | 单页前端 | 不用框架，不引 CDN（离线可用） |
-| `scripts/*` | 一次性脚本 | 不 import `app.*` 里的运行态单例 |
+| `worker/src/generated/*.ts` | 构建产物 | **不手改**，跑 `npm run kb` |
+| `web/*` | 单页前端（两个运行时共用） | 不用框架，不引 CDN（离线可用） |
+| `scripts/*` | 一次性脚本 | 不 import 运行态单例 |
 
 ---
 
@@ -178,7 +251,25 @@ def my_tool(query: str) -> str:
 - 返回值**永远是字符串**，且是给模型读的**结构化纯文本**（不要 JSON 字符串，模型会二次解析出错）。
 - 单次返回 ≤ 1200 字，超了截断并注明"已截断"。
 - 网络工具必须有 `timeout=8` 和失败兜底文案。
-- 加完工具：更新 `app/agent.py` 的 `TOOLS` 列表 → 跑 `smoke_test.py` → 在 README §2 架构图里补一行。
+- 加完工具：更新 `app/agent.py` 的 `TOOLS` 列表 **和** `worker/src/agent.ts` 的 `buildTools()` → 跑 `smoke_test.py` → 在 README §2 架构图里补一行。
+
+TypeScript 侧写法（`worker/src/tools/`）：
+
+```ts
+tool({
+  name: "my_tool",
+  description: "一句话说明。Use when: ... Do NOT use when: ... 返回：纯文本 ≤1200 字。",
+  parameters: {
+    type: "object",
+    properties: { query: { type: "string", description: "..." } },
+    required: ["query"],
+    additionalProperties: false,
+  },
+  execute: async ({ query }) => { /* 返回字符串 */ },
+});
+```
+
+空参数的工具 `parameters` 写成 `{ type: "object", properties: {}, required: [], additionalProperties: false }`——**`required` 不能省**。
 
 ---
 
@@ -195,14 +286,25 @@ def my_tool(query: str) -> str:
 
 ## 9. 提交前自检（Definition of Done）
 
-- [ ] `pytest -q` 全绿
+**本地版：**
+- [ ] `pytest -q` 全绿（当前 60 例）
 - [ ] `python scripts\smoke_test.py` 通过（含危机路径）
 - [ ] 新增/修改的知识文档能被 `ingest_kb.py` 正常切块，且 `kb_search` 能命中
-- [ ] 没有把 key、用户对话、真实姓名写进任何 `.py` / `.md` / 日志
-- [ ] `.env` 没被 `git add`（`.gitignore` 已覆盖）
+
+**Worker 版：**
+- [ ] `npm test` 全绿（当前 56 例）
+- [ ] `npm run typecheck` 零错误
+- [ ] 改过 `knowledge/` 或 `system.md` → 已重跑 `npm run kb`
+- [ ] `npm run dev` 后 `/api/health` 返回 `kbReady: true`
+- [ ] 一句 `我不想活了` 得到写死话术 + 热线卡片，且**没有**触发模型调用
+
+**通用：**
+- [ ] 没有把 key、用户对话、真实姓名写进任何源码 / 文档 / 日志
+- [ ] `.env`、`.dev.vars` 没被 `git add`（`.gitignore` 已覆盖）
 - [ ] 改动涉及 `safety/` 或 `prompts/` 时，手动跑 5 条测试对话：
       ① 普通压力 ② 焦虑躯体化 ③ 明确自杀意念 ④ 要求诊断 ⑤ 要求开药
-- [ ] README / PLAN 里过时的描述已同步
+- [ ] 改动涉及 `safety/` 时，`app/` 与 `worker/src/` **两边都已同步**（§2.3）
+- [ ] README / PLAN / AGENTS 里过时的描述已同步
 
 ---
 

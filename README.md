@@ -20,12 +20,23 @@
 
 ## 2. 技术架构
 
+同一套业务逻辑跑在**两个运行时**上，代码结构镜像对应：
+
+| | 本地版（开发/调试） | Worker 版（生产/部署） |
+|---|---|---|
+| 入口 | `app/main.py`（FastAPI） | `worker/src/index.ts`（fetch handler） |
+| Agents SDK | `openai-agents` 0.24.0（Python） | `@openai/agents` 0.21.0（TS） |
+| 会话 | `SQLiteSession`（进程内 LRU 64） | **无服务端状态**，历史由浏览器每轮回传 |
+| 知识库 | `data/kb_index.json`（运行时读盘） | `worker/src/generated/kb.ts`（构建时编译进包） |
+| 联网 | `httpx` | `fetch` + `AbortSignal.timeout` |
+| 危机话术 | `app/safety/crisis_script.py` | `worker/src/safety/crisisScript.ts` |
+
 ```
-浏览器 (web/)  ──HTTP/SSE──▶  FastAPI (app/main.py)
-                                  │
-                                  ▼
-                        OpenAI Agents SDK (Agent + Runner)
-                                  │  OpenAIChatCompletionsModel
+浏览器 (web/)  ──HTTP/SSE──▶  FastAPI (app/main.py)  或  Worker (worker/src/index.ts)
+                                  │                              │
+                                  ▼                              ▼
+                        OpenAI Agents SDK (Agent + Runner)  ← 同一套设计
+                                  │  Chat Completions 适配层
                                   ▼
                      Mercury 3 @ api.inceptionlabs.ai/v1
                                   │
@@ -37,10 +48,11 @@
 
 **为什么是这套：**
 
-- **OpenAI Agents SDK（`openai-agents` 0.24.0）**：拿到 Agent 循环、`function_tool`、guardrails、session 这些现成能力，不用自己写 tool-calling 循环。
-- **Mercury 3 走 Chat Completions 适配层**：Agents SDK 默认走 Responses API，而 Inception 只提供 `/chat/completions`。因此必须用 `OpenAIChatCompletionsModel` + 自定义 `AsyncOpenAI(base_url=...)`，并 `set_tracing_disabled(True)`（否则 trace 上传会 401）。
+- **OpenAI Agents SDK**：拿到 Agent 循环、`function_tool` / `tool()`、session 这些现成能力，不用自己写 tool-calling 循环。
+- **Mercury 3 走 Chat Completions 适配层**：Agents SDK 默认走 Responses API，而 Inception 只提供 `/chat/completions`。Python 侧用 `OpenAIChatCompletionsModel` + 自定义 `AsyncOpenAI(base_url=...)`，TS 侧用 `OpenAIProvider({ useResponses: false })`，两边都必须 `setTracingDisabled(True)` / `set_tracing_disabled(True)`（否则 trace 上传会 401）。
 - **本地知识库优先、联网兜底**：心理建议的**下限**必须由受控文档保证，`web_search` 只用来补"最新政策 / 本地资源 / 具体机构"，避免模型在网上捡到伪科学。
 - **危机资源是硬编码的确定性工具**，不经过模型生成——热线号码错一位就是事故。
+- **Worker 版刻意无状态**：不用 Durable Objects / KV，会话历史放浏览器内存。好处是冷启动零依赖、没有用户数据落盘（隐私成本最低）；代价是刷新页面即清空，且每轮要重传最近 10 轮上下文。
 
 ---
 
@@ -63,7 +75,7 @@
 > **最重要的一条（实测踩到）**：用户说「我真的不想活了，已经想好怎么做了」时，Inception 的 API 层返回
 > `I'm sorry, but I can't help with this because it involves potentially dangerous or harmful content.`
 > 也就是说——**在最需要它说话的时刻，模型会闭嘴**。
-> 因此危机回复必须是确定性的：`app/safety/crisis_script.py` 里写死，号码从 `app/tools/crisis.py` 取。
+> 因此危机回复必须是确定性的：`app/safety/crisis_script.py`（Worker 版是 `worker/src/safety/crisisScript.ts`）里写死，号码从 `crisis.py` / `crisis.ts` 取。
 > 代价是失去个性化；危机当下，稳定 > 贴切。
 
 > 结论：**够用，且快**。风险点是块式流式、温度下限、审核拒答，都已在架构上兜住。
@@ -71,6 +83,8 @@
 ---
 
 ## 4. 快速开始
+
+### 4.1 本地版（Python / FastAPI）
 
 ```powershell
 # 0) 环境（本机 Python 3.13）
@@ -93,6 +107,26 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 # 打开 http://127.0.0.1:8000
 ```
 
+测试：`.venv\Scripts\python.exe -m pytest -q` → **60 passed**。
+
+### 4.2 Worker 版（Cloudflare / 生产）
+
+```powershell
+npm install                      # @openai/agents + wrangler + vitest
+npm run dev                      # 自动跑 kb → wrangler dev → http://127.0.0.1:8787
+npm test                         # 自动跑 kb → vitest，56 例
+npm run typecheck                # 自动跑 kb → tsc --noEmit，零错误
+npm run kb                       # 单独重建知识库（改了 knowledge/ 或 system.md 后）
+```
+
+`dev` / `deploy` / `test` / `typecheck` 都挂了 `pre*` 钩子自动跑 `kb`，
+所以**改了 `knowledge/` 或 `system.md` 之后不用手动重建**——但如果你直接调 `npx wrangler deploy`，就必须先手动 `npm run kb`。
+
+本地密钥放 `.dev.vars`（已 gitignore，格式与 `.env` 相同，`wrangler dev` 会自动读取）。
+线上用 `wrangler secret put`，**不要**把密钥写进 `wrangler.jsonc` 的 `vars`。
+
+部署细节见 §11。
+
 ---
 
 ## 5. 目录结构
@@ -102,13 +136,18 @@ psycologist-bot/
 ├─ README.md              # 本文件：定位、架构、怎么跑
 ├─ AGENTS.md              # 给 AI 编码助手的协作契约（改代码前必读）
 ├─ PLAN.md                # 分阶段实施计划 + 验收标准 + 风险表
-├─ .env                   # 真实密钥（已 gitignore）
-├─ .env.example           # 密钥占位模板
-├─ requirements.txt
-├─ app/
+├─ .env                   # 本地版密钥（已 gitignore）
+├─ .dev.vars              # Worker 本地密钥（已 gitignore）
+├─ requirements.txt       # Python 依赖
+├─ package.json           # Node 依赖 + kb/dev/deploy/test 脚本
+├─ wrangler.jsonc         # Worker 配置：assets 绑定 + nodejs_compat
+├─ tsconfig.json          # Worker 的 TS 配置（strict / Bundler）
+│
+├─ app/                   # ── 本地版（Python） ──
 │  ├─ main.py             # FastAPI：静态页 + POST /api/chat (SSE)
 │  ├─ config.py           # pydantic-settings 读 .env
 │  ├─ agent.py            # Agent 装配、Session、Runner 调用
+│  ├─ text_tokenizer.py   # CJK 二元分词 + 停用字过滤（检索共用）
 │  ├─ prompts/system.md   # 系统提示词（人格 + 红线 + 输出格式）
 │  ├─ tools/
 │  │  ├─ kb_search.py     # 本地知识库检索（BM25）
@@ -116,8 +155,24 @@ psycologist-bot/
 │  │  └─ crisis.py        # 热线 / 转介（确定性，不走模型）
 │  └─ safety/
 │     ├─ lexicon.py       # 危机词表（中英 + 变体 + 隐喻）
-│     ├─ input_guard.py   # 输入护栏：危机分级
+│     ├─ input_guard.py   # 输入护栏：危机分级 L0–L3
+│     ├─ crisis_script.py # L2/L3 写死话术（模型会拒答，见 §3）
 │     └─ output_guard.py  # 输出护栏：禁诊断/禁药量/禁替代就医
+│
+├─ worker/                # ── Worker 版（TypeScript） ──
+│  ├─ src/
+│  │  ├─ index.ts         # 入口：路由 + SSE + 历史裁剪 + L2/L3 早返回
+│  │  ├─ agent.ts         # Provider / Agent / Runner 装配
+│  │  ├─ text/tokenizer.ts
+│  │  ├─ tools/{kbSearch,webSearch,crisis}.ts
+│  │  ├─ safety/{lexicon,inputGuard,outputGuard,crisisScript}.ts
+│  │  └─ generated/       # 构建产物，勿手改（npm run kb 生成）
+│  │     ├─ kb.ts         # 知识库块编译成 TS 模块
+│  │     └─ prompt.ts     # system.md 编译成 TS 模块
+│  └─ test/
+│     ├─ safety.test.ts   # 39 例：分级 / 否定 / 第三人称 / 输出护栏
+│     └─ tools.test.ts    # 17 例：检索命中 / 热线白名单 / R4 号码约束
+│
 ├─ knowledge/             # 本地知识库（Markdown，人可读、机可检索）
 │  ├─ 00-index.md
 │  ├─ 01-who-dwm-压力管理五技能.md
@@ -129,26 +184,34 @@ psycologist-bot/
 │  ├─ 07-沟通-共情-动机式访谈.md
 │  ├─ 08-伦理边界与转介标准.md
 │  └─ 09-常见提问速查.md
-├─ web/
+│
+├─ web/                   # 两个运行时共用同一份前端
 │  ├─ index.html          # 单页，无构建
 │  ├─ style.css           # 设计令牌 + daisyUI 组件覆写
-│  ├─ app.js              # SSE 流式渲染 + 补间打字
+│  ├─ app.js              # SSE 流式渲染 + 补间打字 + 历史回传
 │  └─ vendor/daisyui/
 │     ├─ daisyui-subset.css  # 10 个组件的预编译 CSS（MIT）
 │     └─ NOTICE.md           # 许可声明 + 复现命令
+│
 ├─ scripts/
-│  ├─ ingest_kb.py        # knowledge/ → data/kb_index.json
-│  └─ smoke_test.py       # 冒烟：模型 / 工具 / 危机路径
+│  ├─ ingest_kb.py        # knowledge/ → data/kb_index.json（本地版）
+│  ├─ build-kb.mjs        # knowledge/ → worker/src/generated/*.ts（Worker 版）
+│  ├─ smoke_test.py       # 冒烟：模型 / 工具 / 危机路径
+│  └─ screenshot.mjs      # 零依赖 CDP 截图（见 §8.4）
+│
 ├─ data/
 │  └─ kb_index.json       # 生成物，勿手改
 └─ tests/
    ├─ test_safety.py      # 危机词召回、输出红线
-   └─ test_tools.py       # 检索命中率、热线条目
+   ├─ test_tools.py       # 检索命中率、热线条目、prompt 无号码
+   └─ test_agent.py       # 工具注册、L2 不调模型
 ```
 
 ---
 
-## 6. 配置项（`.env`）
+## 6. 配置项（`.env` / `.dev.vars`）
+
+两个文件格式相同、键名相同：`.env` 给本地版，`.dev.vars` 给 `wrangler dev`。线上用 `wrangler secret put` 逐个写入。
 
 | 变量 | 说明 | 本机值 |
 |---|---|---|
@@ -158,7 +221,7 @@ psycologist-bot/
 | `MERCURY_REASONING_EFFORT` | `low`（对话）/ `medium`（危机评估） | 见 config.py |
 | `ANYSEARCH_API_KEY` | 联网搜索（来自 `anysearch` skill） | 已配置 |
 | `ANYSEARCH_BASE_URL` | `https://api.anysearch.com` | 固定 |
-| `KB_DIR` | 知识库目录 | `knowledge` |
+| `KB_DIR` | 知识库目录（仅本地版） | `knowledge` |
 | `MAX_TURNS_PER_SESSION` | 单会话保留轮数 | `20` |
 | `CRISIS_MODE` | `strict` / `soft` | `strict` |
 
@@ -208,7 +271,7 @@ psycologist-bot/
 daisyUI 的组件样式都在 `@layer utilities` 里，所以项目自己的 CSS 天然优先，不需要 `!important`。
 复现命令与许可声明见 `web/vendor/daisyui/NOTICE.md`。
 
-### 8.2 设计令牌（`web/preview.css` 第 1 节）
+### 8.2 设计令牌（`web/style.css` 第 1 节）
 
 | 令牌 | 值 | 用途 |
 |---|---|---|
@@ -235,17 +298,22 @@ daisyUI 的组件样式都在 `@layer utilities` 里，所以项目自己的 CSS
 ### 8.4 看一眼
 
 ```powershell
-python -m uvicorn app.main:app --port 8000
-start http://127.0.0.1:8000
+python -m uvicorn app.main:app --port 8000    # 本地版
+# 或
+npm run dev                                    # Worker 版 → http://127.0.0.1:8787
 ```
 
 真实截图（跑起来的服务，不是设计稿）：
 
-| 普通对话 | 危机态 |
+| 普通对话（Worker 版，多轮） | 危机态（Worker 版，安全计划展开） |
 |---|---|
-| ![chat](docs/ui-chat.png) | ![crisis](docs/ui-crisis.png) |
+| ![chat](docs/ui-worker.png) | ![crisis](docs/ui-worker-crisis.png) |
 
+本地版同一套界面的截图见 `docs/ui-chat.png`、`docs/ui-crisis.png`。
 含移动端（≤480px）与 `prefers-reduced-motion` 处理。
+
+截图工具是零依赖的：`node scripts/screenshot.mjs --url <url> --out <png> --js "<注入的 JS>"`，
+用 Node 22 自带的 `fetch` + `WebSocket` 直连 CDP，不装 playwright。
 
 ---
 
@@ -255,7 +323,10 @@ start http://127.0.0.1:8000
 2. Mercury 3 **纯文本**，v1 不支持图片/语音。
 3. 本地知识库为**人工整理的摘要**，不是原文全文；引用以来源链接为准。
 4. 无长期记忆与用户档案（v1 刻意不做，降低隐私风险）。
-5. 单机、单进程、内存态会话；重启即清空。
+5. **本地版**单机、单进程、内存态会话；重启即清空。
+6. **Worker 版**无服务端会话：历史由浏览器内存持有，刷新页面即丢失；每轮重传最近 10 轮（超长轮次按 800 字截断）。
+7. Worker 版把知识库编译进代码包（`kb.ts` 约 43 KB）。知识库若扩到数百篇需改走 KV / R2，否则包体和冷启动都会变差。
+8. 两个运行时的业务逻辑是**手写镜像**，不是共享代码。改红线逻辑（`safety/`）必须**两边同时改**，并各自跑测试——这是当前最大的维护风险，见 AGENTS.md §2.2。
 
 ---
 
@@ -267,3 +338,51 @@ start http://127.0.0.1:8000
 - Beck 认知模型 / CBT 思维记录、行为激活（Behavioural Activation）
 - Stanley & Brown Safety Planning Intervention — 安全计划六步
 - 国家卫健委《心理援助热线技术指南（试行）》、12356 热线公告
+
+---
+
+## 11. 部署到 Cloudflare Workers
+
+### 11.1 改造要点（从 FastAPI 迁到 Worker 时踩的坑）
+
+| 原实现 | 问题 | Worker 版做法 |
+|---|---|---|
+| `SQLiteSession` | Workers 无文件系统、无持久进程 | 删掉。浏览器持 `history` 数组，每轮随请求体回传，服务端只做 `cleanHistory()` 裁剪 |
+| `data/kb_index.json` 读盘 | 无 `fs` | `scripts/build-kb.mjs` 在构建期把 `knowledge/*.md` + `system.md` 编译成 `worker/src/generated/*.ts` |
+| `OpenAIChatCompletionsModel` | 这是 Python 类 | `OpenAIProvider({ useResponses: false })`，并开 `strictFeatureValidation` |
+| `extra_body={"reasoning_effort": ...}` | TS 侧无此参数 | 改成 `modelSettings.providerData` |
+| `@function_tool` | 装饰器 | `tool({ name, description, parameters, execute })`，`parameters` 是 JSON Schema，空对象也要写 `required: []` |
+| `httpx` | 无此依赖 | 原生 `fetch` + `AbortSignal.timeout(8000)` |
+| `StreamingResponse` | 无此 API | 直接构造 `ReadableStream`，手写 `event: xxx\ndata: {...}\n\n` |
+| 静态文件挂载 | 无中间件栈 | `assets` 绑定 `./web` + `run_worker_first: true`（让 `/api/*` 先到 Worker，其余回落静态资源） |
+
+### 11.2 上线步骤
+
+```powershell
+# 1) 登录（首次）
+npx wrangler login
+
+# 2) 写入密钥（三个都要，缺一个线上就 500）
+npx wrangler secret put INCEPTION_API_KEY
+npx wrangler secret put ANYSEARCH_API_KEY
+# INCEPTION_BASE_URL / MERCURY_MODEL 这类非密钥值放 wrangler.jsonc 的 vars 即可
+
+# 3) 构建 + 部署（deploy 脚本会先跑 kb）
+npm run deploy
+
+# 4) 验收
+curl https://<你的子域>.workers.dev/api/health
+# 期望：{"ok":true,"model":"mercury-3","runtime":"cloudflare-worker","kbReady":true}
+```
+
+### 11.3 上线前必须自查的三件事
+
+1. **危机路径不依赖模型**。线上用一句 `我不想活了` 试：应立刻返回写死话术 + 热线卡片，且响应里 `scripted: true`。
+2. **`kbReady` 为 true**。为 false 说明 `generated/kb.ts` 没生成或为空——`npm run deploy` 会先跑 `npm run kb`，但手动 `wrangler deploy` 不会。
+3. **响应头与超时**。Workers 免费版单请求 CPU 10ms（付费 30s），SSE 长连接靠的是 I/O 等待而非 CPU，实测正常；但 `waitUntil` 之类的后台任务别用在流式里。
+
+### 11.4 成本与配额（免费档够用）
+
+- 请求数 10 万/天、CPU 10ms/请求 —— 本项目的 CPU 消耗主要是 BM25 首次建索引（72 块，毫秒级）与正则扫描，压力不大。
+- 真正的成本在 Mercury 3 的 token，不在 Workers。
+- `wrangler dev` 会把遥测提示打到 stderr，`WRANGLER_SEND_METRICS=false` 可关掉。

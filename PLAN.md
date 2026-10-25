@@ -34,8 +34,9 @@
 | **P4** | Web UI | `web/` 三件套 + SSE | 浏览器里流式对话，暖色视觉达标 |
 | **P5** | 联调验收 | `smoke_test.py`、`tests/`、验收清单 | 全部验收项 ✅ |
 | **P6** | 增强（可选） | 见 §8 | 不影响 v1 交付 |
+| **P7** | Cloudflare Workers 部署 | `worker/`、`wrangler.jsonc`、`scripts/build-kb.mjs` | `wrangler dev` 全链路通过，`npm test` 绿，可 `wrangler deploy` |
 
-依赖关系：`P0 → P1 → P2 → P3 → P4 → P5`。P3 可与 P4 并行（接口已定）。
+依赖关系：`P0 → P1 → P2 → P3 → P4 → P5`，然后 `P5 → P7`。P3 可与 P4 并行（接口已定）。P7 是**运行时迁移**，不新增业务能力。
 
 ---
 
@@ -251,7 +252,7 @@ Mercury 3 的 API 层会拒答自杀相关内容。所以 L2/L3 **不调模型**
 
 | # | 风险 | 概率 | 影响 | 应对 |
 |---|---|---|---|---|
-| R1 | 危机漏检（隐喻、反讽、间接表达） | 中 | **极高** | 正则 + LLM 双判；L1 也必须直问；上线前人工过 20 例 |
+| R1 | 危机漏检（隐喻、反讽、间接表达） | 中 | **极高** | 正则分级 + L1 也强制直问（不靠模型判断）；上线前人工过 20 例；宁可误报不可漏报 |
 | R2 | 输出护栏误杀，回复变得空洞 | 中 | 中 | 护栏只替换命中的**句子**，不整段丢弃；替换文案单独打磨 |
 | R3 | Mercury 块式流式导致观感差 | 高 | 低 | 前端补间（P4 已定） |
 | R4 | 温度下限 0.5 导致语气不稳 | 中 | 中 | 用 system.md 强约束 + few-shot 示例；每轮固定结构 |
@@ -259,6 +260,10 @@ Mercury 3 的 API 层会拒答自杀相关内容。所以 L2/L3 **不调模型**
 | R6 | 知识库内容不准确（改写引入偏差） | 中 | 高 | 每篇标来源；改动走 AGENTS §6 格式；关键结论回查原文 |
 | R7 | 用户把 Bot 当治疗替代 | 高 | 高 | 首次对话声明 + 每 5 轮一次轻提醒 + 转介阈值硬编码 |
 | R8 | 合规风险（对外提供服务） | — | 高 | v1 仅本机自用；对外前单独评估，README §7 已声明 |
+| R9 | **模型拒答自杀相关内容**（已发生） | 已确认 | 极高 | L2/L3 不调模型，走写死话术；其他轮次有 `_REFUSAL_FALLBACK` |
+| R10 | **双运行时行为漂移**（改了 Python 忘改 TS） | 高 | 极高 | AGENTS §2.3 镜像表 + 两边 safety 测试同源用例；改 `safety/` 的 PR 必须两边都过 |
+| R11 | Worker 无状态导致多轮失忆（浏览器刷新） | 高 | 中 | 前端持有 `history`，每轮回传 10 轮；界面上"新的对话"按钮语义清晰；可接受 |
+| R12 | 知识库编译进包体，扩容后包变大 | 低 | 中 | 当前 43 KB 无碍；超过 ~50 篇改走 KV/R2（见 README §9.7） |
 
 ---
 
@@ -291,7 +296,8 @@ Mercury 3 的 API 层会拒答自杀相关内容。所以 L2/L3 **不调模型**
 
 ## 12. 实施进度（2026-10-25）
 
-P0–P5 已全部落地，`pytest` 54 条全绿，`scripts/smoke_test.py` 5 条端到端全过。
+P0–P5 已全部落地，`pytest` **60 条**全绿，`scripts/smoke_test.py` 5 条端到端全过。
+P7（Cloudflare Workers）已落地，`npm test` **56 条**全绿，`npm run typecheck` 零错误。
 
 | 阶段 | 状态 | 落地物 |
 |---|---|---|
@@ -301,6 +307,7 @@ P0–P5 已全部落地，`pytest` 54 条全绿，`scripts/smoke_test.py` 5 条�
 | P3 安全层 | ✅ | `safety/{lexicon,input_guard,output_guard,crisis_script}.py`，38 条测试 |
 | P4 UI | ✅ | `web/{index.html,style.css,app.js}` + `POST /api/chat` SSE |
 | P5 验收 | ✅ | `tests/`、`scripts/smoke_test.py`、`scripts/screenshot.mjs`、`docs/*.png` |
+| P7 Workers | ✅ | `worker/src/**`（TS 全量镜像）、`wrangler.jsonc`、`scripts/build-kb.mjs`、`worker/test/` 56 条、`docs/ui-worker*.png` |
 
 **与原计划的偏差（都是实测后改的）：**
 
@@ -310,5 +317,7 @@ P0–P5 已全部落地，`pytest` 54 条全绿，`scripts/smoke_test.py` 5 条�
 3. **检索加了覆盖度门槛**。纯 BM25 会让"量子色动力学"命中"行为动力"，加入
    `coverage >= 0.34` 与单字降权后才干净。
 4. **preview 文件不保留**。样张直接转正为 `index.html`，避免两份 CSS 漂移。
+5. **P7 变成手写镜像，不是代码共享**。Python 与 TS 各自实现 `safety/` 与 `tools/`，
+   靠两边测试对齐行为。这是当时唯一的现实选择（无跨语言共享层），代价见风险表 R11。
 
 **未做（v1 明确范围外）：** 账号体系、图片/语音输入、量表计分、多 Agent 编排、长期记忆。
