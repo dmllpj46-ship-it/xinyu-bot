@@ -105,7 +105,8 @@
       pill.className = "tool";
       pill.innerHTML =
         '<span class="loading loading-dots loading-sm" aria-hidden="true"></span><span></span>';
-      botNode.insertBefore(pill, botNode.firstChild);
+      const card = botNode.querySelector("div.body");
+      card.insertBefore(pill, card.firstChild);
     }
     pill.querySelector("span:last-child").textContent = label;
   }
@@ -180,6 +181,7 @@
     setGlyph(glyph, "thinking");
 
     const botNode = addBot();
+    const av = botNode.querySelector(".av");
     const textEl = botNode.querySelector(".text");
     const typer = new Typer(textEl);
     let gotCrisis = false;
@@ -232,6 +234,7 @@
           } else if (event === "token") {
             clearToolPill(botNode);
             setGlyph(glyph, "speaking");
+            setGlyph(av, "speaking");
             typer.push(data.text || "");
           } else if (event === "error") {
             typer.push(data.message || "出了点问题，稍后再试。");
@@ -246,6 +249,7 @@
       clearToolPill(botNode);
       botNode.classList.remove("streaming");
       setGlyph(glyph, "idle");
+      setGlyph(av, "idle");
       if (gotCrisis) document.body.classList.add("crisis");
 
       const answer = textEl.textContent.trim();

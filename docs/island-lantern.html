@@ -35,28 +35,39 @@
   section { margin-bottom: 52px; }
 
   /* ── 屿灯本体 ───────────────────────────────────── */
-  .yl { display: block; color: var(--clay); overflow: visible; --amp: 1.035; --bob: -1.6px; }
+  .yl { display: block; color: var(--clay); overflow: visible; --amp: 1.06; --bob: -2.4px; }
   .yl svg { display: block; width: 100%; height: 100%; overflow: visible; }
-  .yl .body {
+  /* 只有灯在呼吸。岛和地平线不动 —— 整体缩放会让地平线向两侧长出画布。 */
+  .yl .lamp {
     animation: ylBreathe 5.2s ease-in-out infinite;
     transform-box: fill-box; transform-origin: center;
   }
-  .yl .halo { animation: ylHalo 5.2s ease-in-out infinite; }
+  .yl .halo {
+    animation: ylHalo 5.2s ease-in-out infinite;
+    transform-box: fill-box; transform-origin: center;
+  }
+  .yl .water {
+    animation: ylWater 7.6s ease-in-out infinite;
+    transform-box: fill-box; transform-origin: center;
+  }
 
-  .yl[data-state="listening"] .body { animation-duration: 7s; --amp: 1.018; }
+  .yl[data-state="listening"] .lamp { animation-duration: 7s; --amp: 1.02; }
   .yl[data-state="listening"] .halo { animation: none; opacity: .16; }
-  .yl[data-state="thinking"] .body,
-  .yl[data-state="thinking"] .halo { animation-duration: 1.6s; }
-  .yl[data-state="speaking"] .body { animation: ylBob 2.8s ease-in-out infinite; }
+  .yl[data-state="listening"] .water { animation-duration: 11s; }
+  .yl[data-state="thinking"] .lamp,
+  .yl[data-state="thinking"] .halo { animation-duration: 1.5s; }
+  .yl[data-state="speaking"] .lamp { animation: ylBob 2.8s ease-in-out infinite; }
   .yl[data-state="speaking"] .halo { animation-duration: 2.8s; }
 
   .yl[data-state="crisis"] { color: var(--crisis); }
   .yl[data-state="crisis"] * { animation: none !important; }
   .yl[data-state="crisis"] .halo { opacity: 0; }
 
+  /* 1.035 在 148px 上只有 ±2.6px，肉眼判定为「没动」。 */
   @keyframes ylBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(var(--amp)); } }
   @keyframes ylBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(var(--bob)); } }
-  @keyframes ylHalo { 0%,100% { opacity: .05; } 50% { opacity: .14; } }
+  @keyframes ylHalo { 0%,100% { opacity: .04; transform: scale(1); } 50% { opacity: .2; transform: scale(1.14); } }
+  @keyframes ylWater { 0%,100% { transform: translateX(-1.8px); opacity: .85; } 50% { transform: translateX(1.8px); opacity: 1; } }
 
   /* ── 舞台 ───────────────────────────────────────── */
   .stage {
@@ -162,14 +173,14 @@
     <table>
       <thead><tr><th>状态</th><th>触发</th><th>动作</th></tr></thead>
       <tbody>
-        <tr><td><code>idle</code></td><td>无请求</td><td>呼吸 5.2s（顶栏幅度 1.09，大图 1.035），光晕 0.05↔0.14</td></tr>
-        <tr><td><code>listening</code></td><td>输入框有字</td><td>呼吸放慢到 7s 并变浅（1.018），光晕定格在 0.16 —— 屏息听</td></tr>
-        <tr><td><code>thinking</code></td><td>工具调用中</td><td>呼吸加快到 1.6s，光晕同步心跳</td></tr>
+        <tr><td><code>idle</code></td><td>无请求</td><td>灯呼吸 5.2s（大图 1.06 / 顶栏 1.09 / 头像 1.14），光晕 0.04↔0.20 且同步放大 1.14，水纹 7.6s 横向缓移</td></tr>
+        <tr><td><code>listening</code></td><td>输入框有字</td><td>呼吸放慢到 7s 并变浅（1.02），水纹放慢到 11s，光晕定格在 0.16 —— 屏息听</td></tr>
+        <tr><td><code>thinking</code></td><td>工具调用中</td><td>呼吸加快到 1.5s，光晕同步心跳</td></tr>
         <tr><td><code>speaking</code></td><td>SSE 流式输出</td><td>上下浮 2.8s，光晕同步</td></tr>
         <tr><td><code>crisis</code></td><td>L2 / L3 分流</td><td>转 <code>--crisis</code> 灰蓝，光晕移除，<code>animation: none !important</code></td></tr>
       </tbody>
     </table>
-    <p class="note">危机态必须用 <code>!important</code>：<code>.yl[data-state="speaking"] .body</code> 的优先级是 (0,3,0)，高于 <code>body.crisis .yl *</code> 的 (0,2,1)，压不住。</p>
+    <p class="note">危机态必须用 <code>!important</code>：<code>.yl[data-state="speaking"] .lamp</code> 的优先级是 (0,3,0)，高于 <code>body.crisis .yl *</code> 的 (0,2,1)，压不住。</p>
   </section>
 
 </div>
@@ -178,19 +189,21 @@
 const FULL = `
 <svg viewBox="0 0 120 120" aria-hidden="true">
   <circle class="halo" cx="60" cy="40" r="30" fill="currentColor" opacity=".07"/>
-  <g class="body">
-    <circle cx="60" cy="40" r="17" fill="none" stroke="currentColor" stroke-width="1.9"/>
+  <g>
+    <g class="lamp"><circle cx="60" cy="40" r="17" fill="none" stroke="currentColor" stroke-width="1.9"/></g>
     <path d="M26 84Q60 69 94 84" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
     <path d="M2 84H118" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".38"/>
-    <path d="M32 90Q60 99 88 90" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".2"/>
-    <path d="M16 104H104" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".13"/>
+    <g class="water">
+      <path d="M32 90Q60 99 88 90" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".2"/>
+      <path d="M16 104H104" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".13"/>
+    </g>
   </g>
 </svg>`;
 
 const MARK = `
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-  <g class="body">
-    <circle cx="12" cy="9.6" r="5.2"/>
+  <g>
+    <g class="lamp"><circle cx="12" cy="9.6" r="5.2"/></g>
     <path d="M2.6 18.8C6.8 15.2 17.2 15.2 21.4 18.8"/>
   </g>
 </svg>`;

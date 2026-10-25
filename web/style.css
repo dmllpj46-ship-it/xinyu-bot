@@ -107,24 +107,35 @@ b { font-weight: 600; color: var(--ink); }
    并且停掉一切动效（README §8.3）。
    顶栏 20px 版刻意不画眼点——0.3px 的点只会糊成脏点。
    ─────────────────────────────────────────────────────── */
-.yl { display: block; color: var(--clay); overflow: visible; --amp: 1.035; --bob: -1.6px; }
+.yl { display: block; color: var(--clay); overflow: visible; --amp: 1.06; --bob: -2.4px; }
 
-.yl .body {
+/* 动的只有灯。岛和地平线不动 —— 一旦整体缩放，地平线会向两侧长出画布，
+   看着像线在变长，不像在呼吸。 */
+.yl .lamp {
   animation: ylBreathe 5.2s ease-in-out infinite;
   transform-box: fill-box; transform-origin: center;
 }
-.yl .halo { animation: ylHalo 5.2s ease-in-out infinite; }
+.yl .halo {
+  animation: ylHalo 5.2s ease-in-out infinite;
+  transform-box: fill-box; transform-origin: center;
+}
+/* 水纹：跟呼吸错开相位，7.6s 一个来回，像水在轻轻晃 */
+.yl .water {
+  animation: ylWater 7.6s ease-in-out infinite;
+  transform-box: fill-box; transform-origin: center;
+}
 
 /* 倾听：气变长变浅，光稳住不再起伏——像屏息听人说话 */
-.yl[data-state="listening"] .body { animation-duration: 7s; --amp: 1.018; }
+.yl[data-state="listening"] .lamp { animation-duration: 7s; --amp: 1.02; }
 .yl[data-state="listening"] .halo { animation: none; opacity: 0.16; }
+.yl[data-state="listening"] .water { animation-duration: 11s; }
 
 /* 思考：心跳加快 */
-.yl[data-state="thinking"] .body { animation-duration: 1.6s; }
-.yl[data-state="thinking"] .halo { animation-duration: 1.6s; }
+.yl[data-state="thinking"] .lamp { animation-duration: 1.5s; }
+.yl[data-state="thinking"] .halo { animation-duration: 1.5s; }
 
 /* 说话：上下浮，光跟着呼吸 */
-.yl[data-state="speaking"] .body { animation: ylBob 2.8s ease-in-out infinite; }
+.yl[data-state="speaking"] .lamp { animation: ylBob 2.8s ease-in-out infinite; }
 .yl[data-state="speaking"] .halo { animation-duration: 2.8s; }
 
 /* 危机：整页转灰蓝（body.crisis 覆盖 --clay），动效全停。
@@ -132,6 +143,7 @@ b { font-weight: 600; color: var(--ink); }
    靠选择器权重压不住。和第 9 节降级动效用的是同一套办法。 */
 body.crisis * { animation: none !important; }
 
+/* 幅度是调出来的：1.035 在 148px 上只有 ±2.6px，肉眼判定为「没动」。 */
 @keyframes ylBreathe {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(var(--amp)); }
@@ -141,8 +153,12 @@ body.crisis * { animation: none !important; }
   50% { transform: translateY(var(--bob)); }
 }
 @keyframes ylHalo {
-  0%, 100% { opacity: 0.05; }
-  50% { opacity: 0.14; }
+  0%, 100% { opacity: 0.04; transform: scale(1); }
+  50% { opacity: 0.2; transform: scale(1.14); }
+}
+@keyframes ylWater {
+  0%, 100% { transform: translateX(-1.8px); opacity: 0.85; }
+  50% { transform: translateX(1.8px); opacity: 1; }
 }
 
 /* ── 5. 消息流 ───────────────────────────────────────────── */
@@ -204,16 +220,32 @@ body.crisis * { animation: none !important; }
 .chat-end .chat-bubble::before,
 .chat-end .chat-bubble::after { display: none; }
 
-/* 助手：白底卡片 + 左侧暖色竖线，不套气泡 */
-.msg.bot .body {
+/* 助手：屿灯头像 + 白底卡片。头像顶替了原来的左侧暖色竖线 ——
+   两者都在指认「谁在说」，叠在一起只会更吵。
+   用 grid 不用 flex：危机卡片是 botNode 的第三个子节点，
+   flex 会把它排到头像右边，grid 让它跨满整行回到原位。 */
+.msg.bot {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+}
+.msg.bot > .av {
+  grid-column: 1;
+  width: 26px; height: 26px;
+  margin-top: 12px; transform: none; opacity: 0.92;
+  --amp: 1.14; --bob: -1.4px;
+}
+.msg.bot > .body {
+  grid-column: 2;
   background: #fff;
-  border-left: 3px solid #e6c9ba;
-  border-radius: 4px 16px 16px 4px;
+  border-radius: 14px;
   padding: 15px 19px 15px 17px;
   color: var(--ink-soft);
   box-shadow: 0 1px 2px rgba(90, 66, 52, 0.035);
 }
-.msg.bot .body p { margin-bottom: 0.7em; }
+.msg.bot > .crisis-card { grid-column: 2; }
+.msg.bot > .body p { margin-bottom: 0.7em; }
 .msg.bot .text { white-space: pre-wrap; word-break: break-word; }
 
 /* 打字光标 */
