@@ -187,3 +187,38 @@ def test_dv_doc_has_no_phone_numbers() -> None:
     text = path.read_text(encoding="utf-8")
     assert "12338" not in text
     assert not re.search(r"1[3-9]\d{9}|0\d{2,3}[- ]?\d{7,8}", text)
+
+
+# ── 四个新增领域：婚姻 / 家庭 / 养育 / 职场 ─────────────────
+# 这些文档的「一、先对号」小节刻意堆了用户原话，是为了提高召回；
+# 命中后模型至少能拿到该篇的使用顺序。
+
+
+@pytest.mark.skipif(not HAS_INDEX, reason="需要先建索引")
+@pytest.mark.parametrize(
+    "query,expect",
+    [
+        ("我们天天吵架，他回家就玩手机不说话", "婚姻"),
+        ("吵完架他从来不哄我，冷战一个月了", "婚姻"),
+        ("我妈什么都管，我快三十了她还催我结婚", "家庭关系"),
+        ("婆婆总干涉我们怎么带孩子，我很痛苦", "家庭关系"),
+        ("家里有什么事都找我，弟弟就不用，赡养怎么分", "家庭关系"),
+        ("我一辅导作业就发火，孩子根本不听我的", "孩子养育"),
+        ("孩子整天关在房间玩手机，不肯上学", "孩子养育"),
+        ("领导永远不满意，天天加班到十一二点", "工作职场"),
+        ("同事把活都推给我，我不知道该不该辞职", "工作职场"),
+        ("被裁了，不敢告诉家里", "工作职场"),
+    ],
+)
+def test_kb_hits_new_domain(query: str, expect: str) -> None:
+    out = search(query, 3)
+    heads = [line for line in out.split("\n") if line.startswith("【")]
+    assert heads, f"{query} 没有任何命中"
+    assert expect in heads[0], f"{query} 首条不是{expect}篇：{heads}"
+
+
+@pytest.mark.skipif(not HAS_INDEX, reason="需要先建索引")
+def test_kb_has_14_docs() -> None:
+    titles = {c["title"] for c in _get_index().chunks}  # type: ignore[union-attr]
+    for name in ["婚姻与亲密关系", "家庭关系与代际边界", "孩子养育与亲子关系", "工作职场与职业心理"]:
+        assert any(name in t for t in titles), f"索引里缺少{name}"

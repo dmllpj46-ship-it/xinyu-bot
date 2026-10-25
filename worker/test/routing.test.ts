@@ -97,6 +97,12 @@ describe("指令", () => {
     expect(turn.directive).toContain("不要换关键词反复查");
   });
 
+  it("kb 不许提「知识库」这类过程词", () => {
+    // 线上出现过「我先从知识库查一下……」——对方不需要知道检索过程
+    const turn = plan("我睡不着怎么办", assess("我睡不着怎么办"));
+    expect(turn.directive).toContain("不要提「知识库」");
+  });
+
   it("web 不许转述搜索结果里的电话号码（R4）", () => {
     const turn = plan("上海哪里有免费的心理咨询", assess("上海哪里有免费的心理咨询"));
     expect(turn.directive).toContain("不要转述搜索结果里的电话号码");
@@ -126,7 +132,14 @@ describe("家暴", () => {
     expect(turn.mode).toBe("kb");
     expect(turn.reason).toBe("dv");
   });
-});
+
+  const variants = ["他只是推了我一下", "他推搡我", "他扇了我一耳光"];
+  for (const message of variants) {
+    it(`「${message}」这类轻描淡写的说法也挂危机资源`, () => {
+      // 轻描淡写本身是常见反应
+      expect(plan(message, assess(message)).tools).toContain("crisis_resources");
+    });
+  }
 
   it("指令里写死：不许劝和，必须给号码", () => {
     // 挂工具不等于模型会调，所以指令里要写死
@@ -135,3 +148,53 @@ describe("家暴", () => {
     expect(turn.directive).toContain("为了孩子忍一忍");
     expect(turn.directive).not.toContain("12338"); // 号码仍只从 crisis.ts 出（R4）
   });
+});
+
+describe("四个新增领域的路由", () => {
+  const cases = [
+    "我们天天吵架，他回家就玩手机不说话",
+    "我妈什么都管，我快三十了她还催我结婚",
+    "我一辅导作业就发火，孩子根本不听我的",
+    "领导永远不满意，天天加班到十一二点",
+    "被裁了，不敢告诉家里",
+  ];
+  for (const message of cases) {
+    it(`「${message}」走知识库而不是直答`, () => {
+      const turn = plan(message, assess(message));
+      expect(turn.mode).toBe("kb");
+      expect(turn.tools).toEqual(["kb_search"]);
+    });
+  }
+});
+
+describe("具体生活事件：短也要查", () => {
+  const cases = [
+    "被裁了，不敢告诉家里",
+    "我离婚了",
+    "他出轨了",
+    "孩子厌学，不肯去学校了",
+    "婆媳矛盾越来越严重了",
+    "我爸生病住院了，赡养的事没人管",
+    "我爷爷上周去世了",
+    "我想辞职，但不敢",
+  ];
+  for (const message of cases) {
+    it(`「${message}」事件词出现即成立`, () => {
+      // 测的是 KB_EVENT 不设长度门槛：少了这条，"被裁了，不敢告诉家里"
+      // （8 字）会被当成纯情绪表达直接答，职场那篇根本检索不到。
+      const turn = plan(message, assess(message));
+      expect(turn.mode).toBe("kb");
+      expect(turn.reason).toBe("kb:event");
+    });
+  }
+
+  const feelings = ["我好累", "压力好大", "最近很焦虑", "烦死了", "睡不着", "心里堵得慌"];
+  for (const message of feelings) {
+    it(`「${message}」纯感受仍然不检索`, () => {
+      // 反面对照：感受词仍要长度门槛，否则每条情绪消息都要多等一秒
+      const turn = plan(message, assess(message));
+      expect(turn.mode).toBe("chat");
+      expect(turn.tools).toEqual([]);
+    });
+  }
+});

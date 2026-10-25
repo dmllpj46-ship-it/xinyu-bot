@@ -192,7 +192,7 @@ node scripts/screenshot.mjs --url http://127.0.0.1:8787/ --out docs/shot.png --w
 |---|---|---|
 | `app/main.py` | 路由、SSE 帧格式、错误兜底 | 改 SSE 协议要同步改 `web/app.js` **和** `worker/src/index.ts` |
 | `app/agent.py` | Agent 装配、Session、Runner | 工具按 `TurnPlan.tools` 挂载，注册表 `_TOOLS` 的键名必须与 routing 里的字符串一致 |
-| `app/routing.py` / `worker/src/routing.ts` | 轮次路由：要不要检索、检索哪一边 | **延迟预算的守门人**。加一个信号词 = 一批消息多等两秒，加之前先想清楚（README §3.1） |
+| `app/routing.py` / `worker/src/routing.ts` | 轮次路由：要不要检索、检索哪一边 | **延迟预算的守门人**。加一个信号词 = 一批消息多等两秒，加之前先想清楚（README §3.1）。四档信号的强度顺序不能改：求方法(强) → 事件 → 求方法(弱) → 主题(感受) |
 | `worker/src/index.ts` | Worker 路由、SSE、历史裁剪、L2/L3 早返回 | L2/L3 的分流必须**在调模型之前**，别挪到后面 |
 | `worker/src/agent.ts` | Provider / Agent / Runner 装配 | `useResponses: false` 不能删 |
 | `app/prompts/system.md` | 人格、语气、输出结构、红线复述 | **纯文本文件**；Worker 侧由 `npm run kb` 编译，改完两边都要验 |
