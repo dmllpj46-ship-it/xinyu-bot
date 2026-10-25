@@ -82,7 +82,9 @@ b { font-weight: 600; color: var(--ink); }
   padding: 20px 0 14px;
 }
 .brand { display: flex; align-items: baseline; gap: 9px; }
-.mark { width: 20px; height: 20px; transform: translateY(3px); --amp: 1.09; --bob: -0.9px; }
+/* 提权重到 .mark.yl：同级 .mark 写在 .yl 之前，--lift 会被 .yl 默认值盖掉，
+   20px 图标就会按大图的 5 用户单位去浮（实测 4.3px，抖得厉害）。 */
+.mark.yl { width: 20px; height: 20px; transform: translateY(3px); --lift: -1.8px; --amp: 1.05; }
 .name { font-size: 17px; font-weight: 600; letter-spacing: 0.14em; }
 .tag {
   font-size: 10.5px; letter-spacing: 0.1em; color: var(--muted);
@@ -107,16 +109,26 @@ b { font-weight: 600; color: var(--ink); }
    并且停掉一切动效（README §8.3）。
    顶栏 20px 版刻意不画眼点——0.3px 的点只会糊成脏点。
    ─────────────────────────────────────────────────────── */
-.yl { display: block; color: var(--clay); overflow: visible; --amp: 1.06; --bob: -2.4px; }
+.yl {
+  display: block; color: var(--clay); overflow: visible;
+  /* 幅度单位是 SVG 用户单位（viewBox 坐标系），不是屏幕像素。
+     148px 的 .art 是 viewBox 120，1 用户单位 ≈ 1.23px；
+     20px 的 .mark 是 viewBox 24，1 用户单位 ≈ 0.83px。
+     所以同一个 --lift 在两个尺寸上的观感差三倍，必须分别给值。 */
+  --lift: -5px; --amp: 1.035;
+  --haloScale: 1.12; --haloA: .05; --haloB: .18;
+}
 
 /* 动的只有灯。岛和地平线不动 —— 一旦整体缩放，地平线会向两侧长出画布，
-   看着像线在变长，不像在呼吸。 */
+   看着像线在变长，不像在呼吸。
+   位移用 translateY（而不是只靠 scale）：上一版用 scale 1.035，148px 上
+   单边只有 2.6px，逐帧量化下来 2.2 秒内顶点只动了 1.24px，肉眼判定为静止。 */
 .yl .lamp {
-  animation: ylBreathe 5.2s ease-in-out infinite;
+  animation: ylFloat 4.4s ease-in-out infinite;
   transform-box: fill-box; transform-origin: center;
 }
 .yl .halo {
-  animation: ylHalo 5.2s ease-in-out infinite;
+  animation: ylHalo 4.4s ease-in-out infinite;
   transform-box: fill-box; transform-origin: center;
 }
 /* 水纹：跟呼吸错开相位，7.6s 一个来回，像水在轻轻晃 */
@@ -126,39 +138,34 @@ b { font-weight: 600; color: var(--ink); }
 }
 
 /* 倾听：气变长变浅，光稳住不再起伏——像屏息听人说话 */
-.yl[data-state="listening"] .lamp { animation-duration: 7s; --amp: 1.02; }
-.yl[data-state="listening"] .halo { animation: none; opacity: 0.16; }
-.yl[data-state="listening"] .water { animation-duration: 11s; }
+.yl[data-state="listening"] .lamp { animation-duration: 7.4s; --amp: 1.014; --lift: -2.4px; }
+.yl[data-state="listening"] .halo { animation: none; opacity: 0.15; }
+.yl[data-state="listening"] .water { animation-duration: 12s; }
 
-/* 思考：心跳加快 */
-.yl[data-state="thinking"] .lamp { animation-duration: 1.5s; }
-.yl[data-state="thinking"] .halo { animation-duration: 1.5s; }
+/* 思考：心跳加快，幅度收一点免得抖 */
+.yl[data-state="thinking"] .lamp { animation-duration: 1.4s; --lift: -3.2px; }
+.yl[data-state="thinking"] .halo { animation-duration: 1.4s; --haloScale: 1.16; }
 
-/* 说话：上下浮，光跟着呼吸 */
-.yl[data-state="speaking"] .lamp { animation: ylBob 2.8s ease-in-out infinite; }
-.yl[data-state="speaking"] .halo { animation-duration: 2.8s; }
+/* 说话：浮得高一点，像一句一句往外递 */
+.yl[data-state="speaking"] .lamp { animation-duration: 2.4s; --lift: -7px; }
+.yl[data-state="speaking"] .halo { animation-duration: 2.4s; }
 
 /* 危机：整页转灰蓝（body.crisis 覆盖 --clay），动效全停。
    这里必须用 !important —— 状态选择器的优先级高于 body.crisis .yl *，
    靠选择器权重压不住。和第 9 节降级动效用的是同一套办法。 */
 body.crisis * { animation: none !important; }
 
-/* 幅度是调出来的：1.035 在 148px 上只有 ±2.6px，肉眼判定为「没动」。 */
-@keyframes ylBreathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(var(--amp)); }
-}
-@keyframes ylBob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(var(--bob)); }
+@keyframes ylFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(var(--lift)) scale(var(--amp)); }
 }
 @keyframes ylHalo {
-  0%, 100% { opacity: 0.04; transform: scale(1); }
-  50% { opacity: 0.2; transform: scale(1.14); }
+  0%, 100% { transform: translateY(0) scale(1); opacity: var(--haloA); }
+  50% { transform: translateY(var(--lift)) scale(var(--haloScale)); opacity: var(--haloB); }
 }
 @keyframes ylWater {
-  0%, 100% { transform: translateX(-1.8px); opacity: 0.85; }
-  50% { transform: translateX(1.8px); opacity: 1; }
+  0%, 100% { transform: translateX(-2.6px); opacity: 0.8; }
+  50% { transform: translateX(2.6px); opacity: 1; }
 }
 
 /* ── 5. 消息流 ───────────────────────────────────────────── */
@@ -234,7 +241,9 @@ body.crisis * { animation: none !important; }
   grid-column: 1;
   width: 26px; height: 26px;
   margin-top: 12px; transform: none; opacity: 0.92;
-  --amp: 1.14; --bob: -1.4px;
+  /* 26px 上 -2.6 用户单位实测浮 3.8px，占图标高度 15%，在文字流里晃得吵。
+     压到 -1.8（≈2px）刚好能看出在动，又不抢字。 */
+  --lift: -1.8px; --amp: 1.04;
 }
 .msg.bot > .body {
   grid-column: 2;

@@ -35,15 +35,20 @@
   section { margin-bottom: 52px; }
 
   /* ── 屿灯本体 ───────────────────────────────────── */
-  .yl { display: block; color: var(--clay); overflow: visible; --amp: 1.06; --bob: -2.4px; }
+  .yl {
+    display: block; color: var(--clay); overflow: visible;
+    --lift: -5px; --amp: 1.035; --haloScale: 1.12; --haloA: .05; --haloB: .18;
+  }
   .yl svg { display: block; width: 100%; height: 100%; overflow: visible; }
-  /* 只有灯在呼吸。岛和地平线不动 —— 整体缩放会让地平线向两侧长出画布。 */
+  /* 只有灯在动。岛和地平线不动 —— 整体缩放会让地平线向两侧长出画布。
+     位移走 translateY：只靠 scale 在 148px 上单边只有 2.6px，实测顶点 2.2 秒
+     才动 1.24px，等于静止。 */
   .yl .lamp {
-    animation: ylBreathe 5.2s ease-in-out infinite;
+    animation: ylFloat 4.4s ease-in-out infinite;
     transform-box: fill-box; transform-origin: center;
   }
   .yl .halo {
-    animation: ylHalo 5.2s ease-in-out infinite;
+    animation: ylHalo 4.4s ease-in-out infinite;
     transform-box: fill-box; transform-origin: center;
   }
   .yl .water {
@@ -51,23 +56,27 @@
     transform-box: fill-box; transform-origin: center;
   }
 
-  .yl[data-state="listening"] .lamp { animation-duration: 7s; --amp: 1.02; }
-  .yl[data-state="listening"] .halo { animation: none; opacity: .16; }
-  .yl[data-state="listening"] .water { animation-duration: 11s; }
-  .yl[data-state="thinking"] .lamp,
-  .yl[data-state="thinking"] .halo { animation-duration: 1.5s; }
-  .yl[data-state="speaking"] .lamp { animation: ylBob 2.8s ease-in-out infinite; }
-  .yl[data-state="speaking"] .halo { animation-duration: 2.8s; }
+  .yl[data-state="listening"] .lamp { animation-duration: 7.4s; --amp: 1.014; --lift: -2.4px; }
+  .yl[data-state="listening"] .halo { animation: none; opacity: .15; }
+  .yl[data-state="listening"] .water { animation-duration: 12s; }
+  .yl[data-state="thinking"] .lamp { animation-duration: 1.4s; --lift: -3.2px; }
+  .yl[data-state="thinking"] .halo { animation-duration: 1.4s; --haloScale: 1.16; }
+  .yl[data-state="speaking"] .lamp { animation-duration: 2.4s; --lift: -7px; }
+  .yl[data-state="speaking"] .halo { animation-duration: 2.4s; }
 
   .yl[data-state="crisis"] { color: var(--crisis); }
   .yl[data-state="crisis"] * { animation: none !important; }
   .yl[data-state="crisis"] .halo { opacity: 0; }
 
-  /* 1.035 在 148px 上只有 ±2.6px，肉眼判定为「没动」。 */
-  @keyframes ylBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(var(--amp)); } }
-  @keyframes ylBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(var(--bob)); } }
-  @keyframes ylHalo { 0%,100% { opacity: .04; transform: scale(1); } 50% { opacity: .2; transform: scale(1.14); } }
-  @keyframes ylWater { 0%,100% { transform: translateX(-1.8px); opacity: .85; } 50% { transform: translateX(1.8px); opacity: 1; } }
+  @keyframes ylFloat {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(var(--lift)) scale(var(--amp)); }
+  }
+  @keyframes ylHalo {
+    0%, 100% { transform: translateY(0) scale(1); opacity: var(--haloA); }
+    50% { transform: translateY(var(--lift)) scale(var(--haloScale)); opacity: var(--haloB); }
+  }
+  @keyframes ylWater { 0%,100% { transform: translateX(-2.6px); opacity: .8; } 50% { transform: translateX(2.6px); opacity: 1; } }
 
   /* ── 舞台 ───────────────────────────────────────── */
   .stage {
@@ -94,7 +103,7 @@
   .size { text-align: center; }
   .size .yl { margin: 0 auto 12px; }
   .size .label { font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
-  .s20 { width: 20px; height: 20px; --amp: 1.09; --bob: -0.9px; }
+  .s20 { width: 20px; height: 20px; --lift: -1.8px; --amp: 1.05; }
   .s40 { width: 40px; height: 40px; }
   .s148 { width: 148px; height: 148px; }
 
@@ -103,7 +112,7 @@
     display: flex; align-items: center; gap: 9px;
     background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px;
   }
-  .topbar-demo .mark { width: 20px; height: 20px; transform: translateY(3px); --amp: 1.09; }
+  .topbar-demo .mark { width: 20px; height: 20px; transform: translateY(3px); --lift: -1.8px; --amp: 1.05; }
   .topbar-demo .name { font-size: 17px; font-weight: 600; letter-spacing: .14em; }
   .topbar-demo .tag {
     font-size: 10.5px; letter-spacing: .1em; color: var(--muted);
@@ -173,10 +182,10 @@
     <table>
       <thead><tr><th>状态</th><th>触发</th><th>动作</th></tr></thead>
       <tbody>
-        <tr><td><code>idle</code></td><td>无请求</td><td>灯呼吸 5.2s（大图 1.06 / 顶栏 1.09 / 头像 1.14），光晕 0.04↔0.20 且同步放大 1.14，水纹 7.6s 横向缓移</td></tr>
-        <tr><td><code>listening</code></td><td>输入框有字</td><td>呼吸放慢到 7s 并变浅（1.02），水纹放慢到 11s，光晕定格在 0.16 —— 屏息听</td></tr>
-        <tr><td><code>thinking</code></td><td>工具调用中</td><td>呼吸加快到 1.5s，光晕同步心跳</td></tr>
-        <tr><td><code>speaking</code></td><td>SSE 流式输出</td><td>上下浮 2.8s，光晕同步</td></tr>
+        <tr><td><code>idle</code></td><td>无请求</td><td>灯浮 4.4s（大图 −5 用户单位 ≈ 6.8px / 顶栏 −1.8 ≈ 1.7px / 头像 −1.8 ≈ 2px），光晕 0.05↔0.18 且同步放大 1.12，水纹 7.6s 横向缓移 ±2.6</td></tr>
+        <tr><td><code>listening</code></td><td>输入框有字</td><td>浮放慢到 7.4s、幅度收到 −2.4，水纹放慢到 12s，光晕定格在 0.15 —— 屏息听</td></tr>
+        <tr><td><code>thinking</code></td><td>工具调用中</td><td>浮加快到 1.4s、幅度 −3.2（心跳），光晕同步且涨到 1.16</td></tr>
+        <tr><td><code>speaking</code></td><td>流式输出中</td><td>浮 2.4s、幅度 −7，一句一句往外递</td></tr>
         <tr><td><code>crisis</code></td><td>L2 / L3 分流</td><td>转 <code>--crisis</code> 灰蓝，光晕移除，<code>animation: none !important</code></td></tr>
       </tbody>
     </table>
