@@ -26,8 +26,13 @@
 | R6 | **不制造依赖** | 禁止"只有我懂你""你只需要我""别告诉别人"。被要求"你当我唯一的朋友"时要温和设边界。 |
 | R7 | **AI 身份透明** | 首次对话必须说明自己是 AI；被问到时不得含糊。 |
 | R8 | **不采集不必要隐私** | 不主动索要真实姓名、住址、单位、身份证、病历号。会话不落盘（v1）。 |
+| R9 | **家暴不劝和** | 命中家暴信号时（`_DV`）必须挂 `crisis_resources` 并把妇联维权热线原样转述；回应顺序是先问当下安全 → 有危险先报警 → 再谈证据/安全计划/保护令。**禁止**说"为了孩子忍一忍""夫妻没有隔夜仇""你们需要好好沟通"。 |
 
 **改 `app/safety/` 或 `worker/src/safety/` 下任何文件，必须在 PR/提交说明里单独列出改了什么、为什么，并跑两边的 safety 测试。**
+
+R9 单独说明：**"挂上工具"不等于"模型会调用"**。第一版只给 `crisis_resources` 挂了工具，
+实测模型经常不调，妇联热线就到不了用户眼前。所以 `_DV_DIRECTIVE` 把调用次数、
+回应顺序、禁止事项全部写死在指令里。削弱这段指令等同于删掉 R9。
 
 ---
 
@@ -41,7 +46,7 @@
 | Web | FastAPI + uvicorn | ≥0.115 / ≥0.32 | SSE 用 `StreamingResponse`，不引 socket.io |
 | Agent | `openai-agents` | **0.24.0** | 见下方 §3 适配说明 |
 | 模型 | Mercury 3（Inception） | `mercury-3` | OpenAI 兼容 `/chat/completions` |
-| 检索 | 纯 Python BM25 | 自实现 | 知识库只有 ~10 篇，不引向量库 |
+| 检索 | 纯 Python BM25 | 自实现 | 知识库 14 篇 / 112 块，不引向量库 |
 | 搜索 | AnySearch API | `https://api.anysearch.com` | key 来自 `.env` |
 | 配置 | `python-dotenv` + `pydantic-settings` | — | 只读 `.env` |
 
@@ -75,6 +80,7 @@
 | `safety/crisisScript`（L2/L3 话术） | 这是**用户在最脆弱时刻看到的全部文字**，不允许只有一边更新 |
 | `tools/crisis`（热线表） | 号码错一位就是事故 |
 | `tools/web_search`（联网搜索） | 请求体必须一致：**都不带 `tag`**。带 tag 会 400（见 README §3.2），一端改一端不改，就会出现"线上能搜、本地不能搜" |
+| `tools/kb_search`（BM25 + 领域锚词） | `ANCHORS` 命中时要绕过覆盖度门槛、并压掉非锚词块，两边逻辑必须一致，否则同一句「他打我了」在两端命中不同篇 |
 | `prompts/system.md` | Worker 侧由 `npm run kb` 编译进 `generated/prompt.ts`，**改完必须重跑** |
 | `knowledge/*.md` | 本地跑 `ingest_kb.py`，Worker 跑 `build-kb.mjs` |
 
@@ -161,19 +167,23 @@ const provider = new OpenAIProvider({
 # ── 本地版（Python） ──
 pip install -r requirements.txt
 python scripts\ingest_kb.py                 # 改了 knowledge/ 之后必跑
-python scripts\smoke_test.py                # 模型连通 + 三个工具 + 一条危机路径
+python scripts\smoke_test.py                # 11 条端到端：连通 + 工具 + 危机 + 四个新领域 + 反面对照
 python -m uvicorn app.main:app --port 8000 --reload
-pytest -q                                   # 60 例
+pytest -q                                   # 153 例
 pytest tests/test_safety.py -q              # 改 safety 后必跑
 
 # ── Worker 版（TypeScript） ──
 npm install
 npm run kb                                  # 改了 knowledge/ 或 system.md 之后必跑
 npm run dev                                 # wrangler dev → http://127.0.0.1:8787
-npm test                                    # vitest，56 例
+npm test                                    # vitest，150 例
 npm run typecheck                           # tsc --noEmit
 npm run deploy                              # kb + wrangler deploy → xinyu-bot.poetfangnimagoupi.workers.dev
 ```
+
+⚠️ **别直接调 `vitest` / `tsc` / `wrangler deploy`**——`test`、`typecheck`、`deploy`、`dev`
+都挂了 `pre*` 钩子先跑 `npm run kb`。绕过钩子会用旧索引跑测试，
+症状是"索引里缺少 XX 篇"这种看起来像代码错、其实是构建产物过期的报错。
 
 线上地址：<https://xinyu-bot.poetfangnimagoupi.workers.dev>。密钥用 `wrangler secret put` 管理，
 **不要**写进 `wrangler.jsonc` 的 `vars`（那个文件是公开的）。
@@ -192,7 +202,7 @@ node scripts/screenshot.mjs --url http://127.0.0.1:8787/ --out docs/shot.png --w
 |---|---|---|
 | `app/main.py` | 路由、SSE 帧格式、错误兜底 | 改 SSE 协议要同步改 `web/app.js` **和** `worker/src/index.ts` |
 | `app/agent.py` | Agent 装配、Session、Runner | 工具按 `TurnPlan.tools` 挂载，注册表 `_TOOLS` 的键名必须与 routing 里的字符串一致 |
-| `app/routing.py` / `worker/src/routing.ts` | 轮次路由：要不要检索、检索哪一边 | **延迟预算的守门人**。加一个信号词 = 一批消息多等两秒，加之前先想清楚（README §3.1）。四档信号的强度顺序不能改：求方法(强) → 事件 → 求方法(弱) → 主题(感受) |
+| `app/routing.py` / `worker/src/routing.ts` | 轮次路由：要不要检索、检索哪一边 | **延迟预算的守门人**。加一个信号词 = 一批消息多等两秒，加之前先想清楚（README §3.1）。四档信号的强度顺序不能改：求方法(强) → 事件 → 求方法(弱) → 主题(感受)。家暴命中时还要强制挂 `crisis_resources` 并把 `mode` 抬成 `kb` |
 | `worker/src/index.ts` | Worker 路由、SSE、历史裁剪、L2/L3 早返回 | L2/L3 的分流必须**在调模型之前**，别挪到后面 |
 | `worker/src/agent.ts` | Provider / Agent / Runner 装配 | `useResponses: false` 不能删 |
 | `app/prompts/system.md` | 人格、语气、输出结构、红线复述 | **纯文本文件**；Worker 侧由 `npm run kb` 编译，改完两边都要验 |
@@ -235,6 +245,25 @@ node scripts/screenshot.mjs --url http://127.0.0.1:8787/ --out docs/shot.png --w
 - 不写"研究表明"这种无出处的句子；要写就给出机构/年份。
 - 不抄原文段落，**改写 + 标注来源**。避免版权问题。
 - 中文正文，专业术语首次出现给英文原文（如"认知解离（cognitive defusion）"）。
+- **不写任何电话号码**（R4）。号码只能来自 `tools/crisis` 的常量表，
+  知识库里出现座机/手机号一律算事故——`tests/test_tools.py` 有正则守着。
+
+### 6.1 新增的关系/处境类文档（10–14 篇）多两条约定
+
+这几篇（家暴、婚姻、家庭、养育、职场）用户是**带着一句具体困扰来的**，
+不是来上课的。所以除了上面的格式，还要求：
+
+1. **第一节必须是「一、先对号」**，标题下直接堆用户的原话
+   （「他回家就玩手机不说话」「被裁了不敢告诉家里」）。
+   这不是凑字数——用户说的和文档写的往往不是一个词
+   （用户说「他打我了」，文档写「殴打」），原话是召回的主要来源。
+2. **「先对号」末尾附一段「使用顺序」**，3–5 步，一句话一步。
+   模型很可能只检索到这一块就开口回答，这段是它的兜底剧本。
+3. **每篇给一个"今晚能试的小动作"**，≤5 分钟、可观察、不需要对方配合。
+   给不出就说明这篇还没写完。
+
+写法深浅的尺度：**够模型当场给出可执行的一步就行，不追求体系完整。**
+一篇 7–11 块，别写成教科书。
 
 ---
 
@@ -256,8 +285,10 @@ def my_tool(query: str) -> str:
 
 - 返回值**永远是字符串**，且是给模型读的**结构化纯文本**（不要 JSON 字符串，模型会二次解析出错）。
 - 单次返回 ≤ 1200 字，超了截断并注明"已截断"。
-- 网络工具必须有 `timeout=8` 和失败兜底文案。
-- 加完工具：更新 `app/agent.py` 的 `TOOLS` 列表 **和** `worker/src/agent.ts` 的 `buildTools()` → 跑 `smoke_test.py` → 在 README §2 架构图里补一行。
+- 网络工具必须有超时（`web_search` 用 **6 秒**，不是 8——压力大的人等不起，宁可降级也不要拖满）和失败兜底文案。
+- 加完工具：更新 `app/agent.py` 的 `_TOOLS` 注册表 **和** `worker/src/agent.ts` 的 `buildTools()`
+  → 如果它该按轮次挂载，还要在 `routing.py` / `routing.ts` 里登记（注册表键名必须和 routing 里的字符串一致）
+  → 跑 `smoke_test.py` → 在 README §2 架构图里补一行。
 
 TypeScript 侧写法（`worker/src/tools/`）：
 
@@ -283,7 +314,7 @@ tool({
 
 - 类型注解齐全；`ruff` 默认规则（行宽 100）。
 - 异步：I/O 一律 `async`；工具内部若调同步库，用 `asyncio.to_thread` 包。
-- 日志：`logging`，不 `print`；不记录用户原文（只记长度和危机分级）。
+- 日志：`logging`，不 `print`；不记录用户原文（只记长度、危机分级、路由 mode 与 reason）。
 - 异常：面向用户永远给**可读的一句话**，堆栈只进日志。
 - 中文注释可以，但**变量名/函数名一律英文**。
 - 不写"以防万一"的抽象层。三个重复好过一个错误抽象。
@@ -293,12 +324,12 @@ tool({
 ## 9. 提交前自检（Definition of Done）
 
 **本地版：**
-- [ ] `pytest -q` 全绿（当前 60 例）
-- [ ] `python scripts\smoke_test.py` 通过（含危机路径）
+- [ ] `pytest -q` 全绿（当前 153 例）
+- [ ] `python scripts\smoke_test.py` 通过（含危机路径 + 四个新领域 + 「纯情绪不检索」反面对照）
 - [ ] 新增/修改的知识文档能被 `ingest_kb.py` 正常切块，且 `kb_search` 能命中
 
 **Worker 版：**
-- [ ] `npm test` 全绿（当前 56 例）
+- [ ] `npm test` 全绿（当前 150 例）
 - [ ] `npm run typecheck` 零错误
 - [ ] 改过 `knowledge/` 或 `system.md` → 已重跑 `npm run kb`
 - [ ] `npm run dev` 后 `/api/health` 返回 `kbReady: true`
@@ -310,6 +341,8 @@ tool({
 - [ ] 改动涉及 `safety/` 或 `prompts/` 时，手动跑 5 条测试对话：
       ① 普通压力 ② 焦虑躯体化 ③ 明确自杀意念 ④ 要求诊断 ⑤ 要求开药
 - [ ] 改动涉及 `safety/` 时，`app/` 与 `worker/src/` **两边都已同步**（§2.3）
+- [ ] 改过 `routing`：两边的 `reason` 字段一致（同一句输入在两端给出同一个 `kb:event` / `kb:topic` / `dv`），
+      且 `tests/test_routing.py` 与 `worker/test/routing.test.ts` 用例数对得上
 - [ ] README / PLAN / AGENTS 里过时的描述已同步
 
 ---
