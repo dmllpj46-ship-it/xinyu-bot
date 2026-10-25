@@ -1,0 +1,298 @@
+/* ============================================================
+   心屿 · 视觉层
+   底座：daisyUI 5（MIT）· 主题：caramellatte 改写为暖陶色
+   daisyUI 组件样式都在 @layer utilities 里，无 layer 的规则天然优先。
+   ============================================================ */
+
+/* ── 1. 主题令牌：改这一块，全站一起变暖 ─────────────────── */
+[data-theme="caramellatte"] {
+  --color-base-100: #fbf7f2;
+  --color-base-200: #f4ece3;
+  --color-base-300: #e9dccf;
+  --color-base-content: #2e2a27;
+
+  --color-primary: #c0765c;
+  --color-primary-content: #fff8f4;
+  --color-secondary: #8fa68e;
+  --color-secondary-content: #ffffff;
+  --color-accent: #d9a78f;
+  --color-neutral: #3a3330;
+  --color-neutral-content: #fbf7f2;
+
+  --radius-selector: 999px;
+  --radius-field: 1.1rem;
+  --radius-box: 1.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+
+  --ink: #2e2a27;
+  --ink-soft: #574f49;
+  --muted: #94897e;
+  --line: #ebe1d6;
+  --clay: #c0765c;
+  --clay-soft: #f3e3da;
+  --sage: #8fa68e;
+  --crisis: #6e7c8c;
+  --crisis-soft: #eff2f5;
+}
+
+/* 危机态：整页转低饱和灰蓝，动效全关（README §8.3） */
+body.crisis {
+  --clay: #6e7c8c;
+  --clay-soft: #e8edf2;
+}
+
+/* ── 2. 基础排版 ─────────────────────────────────────────── */
+* { -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; margin: 0; }
+
+body {
+  background: var(--color-base-100);
+  color: var(--ink);
+  font-family: "PingFang SC", "HarmonyOS Sans SC", "Source Han Sans SC",
+               "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  font-size: 15.5px;
+  line-height: 1.78;
+  letter-spacing: 0.012em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+p { margin: 0 0 0.85em; }
+p:last-child { margin-bottom: 0; }
+b { font-weight: 600; color: var(--ink); }
+.hidden { display: none !important; }
+
+/* ── 3. 外壳 ─────────────────────────────────────────────── */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 22px;
+}
+
+/* ── 4. 顶栏 ─────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0 14px;
+}
+.brand { display: flex; align-items: baseline; gap: 9px; }
+.mark { width: 20px; height: 20px; color: var(--clay); transform: translateY(3px); }
+.mark svg { width: 100%; height: 100%; display: block; }
+.name { font-size: 17px; font-weight: 600; letter-spacing: 0.14em; }
+.tag {
+  font-size: 10.5px; letter-spacing: 0.1em; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
+  transform: translateY(-1px);
+}
+.ghost-btn {
+  font: inherit; font-size: 13px; color: var(--muted);
+  background: none; border: none; padding: 6px 2px; cursor: pointer;
+  transition: color 0.2s ease;
+}
+.ghost-btn:hover { color: var(--clay); }
+
+.promise {
+  margin: 0; padding: 9px 0 0; border-top: 1px solid var(--line);
+  text-align: center; font-size: 12px; letter-spacing: 0.06em; color: var(--muted);
+}
+
+/* ── 5. 消息流 ───────────────────────────────────────────── */
+.thread {
+  flex: 1;
+  padding: 26px 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+/* 空态 */
+.welcome { text-align: center; padding: 34px 0 10px; }
+.art {
+  width: 126px; height: 63px; margin: 0 auto 24px;
+  color: var(--clay); opacity: 0.5; display: block;
+}
+.welcome h1 {
+  font-size: 21px; font-weight: 500; letter-spacing: 0.03em;
+  margin: 0 0 8px; color: var(--ink);
+}
+.welcome .sub { font-size: 13.5px; color: var(--muted); margin: 0 0 26px; }
+.chips { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; }
+.chip {
+  font: inherit; font-size: 13.5px; color: var(--ink-soft);
+  background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 8px 16px; cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.chip:hover {
+  background: var(--clay-soft); border-color: #e6cec2; transform: translateY(-1px);
+}
+
+/* 消息入场 */
+.msg { animation: rise 0.32s ease both; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 用户气泡（daisyUI chat，去掉尾巴） */
+.chat-end .chat-bubble {
+  background: var(--clay-soft);
+  color: #463a33;
+  border-radius: 18px 18px 5px 18px;
+  padding: 11px 16px;
+  font-size: 15px;
+  line-height: 1.72;
+  max-width: 78%;
+  margin-left: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-end .chat-bubble::before,
+.chat-end .chat-bubble::after { display: none; }
+
+/* 助手：白底卡片 + 左侧暖色竖线，不套气泡 */
+.msg.bot .body {
+  background: #fff;
+  border-left: 3px solid #e6c9ba;
+  border-radius: 4px 16px 16px 4px;
+  padding: 15px 19px 15px 17px;
+  color: var(--ink-soft);
+  box-shadow: 0 1px 2px rgba(90, 66, 52, 0.035);
+}
+.msg.bot .body p { margin-bottom: 0.7em; }
+.msg.bot .text { white-space: pre-wrap; word-break: break-word; }
+
+/* 打字光标 */
+.msg.bot.streaming .text::after {
+  content: "▍";
+  margin-left: 1px;
+  color: var(--clay);
+  animation: blink 1.05s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* 工具调用胶囊 */
+.tool {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--muted);
+  background: var(--color-base-200);
+  border-radius: 999px; padding: 5px 13px 5px 10px;
+  margin-bottom: 12px;
+}
+.tool .loading { color: var(--clay); width: 1.1em; height: 1.1em; }
+
+/* ── 6. 危机卡片 ─────────────────────────────────────────── */
+.crisis-card {
+  margin-top: 12px;
+  background: var(--crisis-soft);
+  border: 1px solid #dfe6ec;
+  border-radius: 16px;
+  padding: 18px 18px 16px;
+}
+.crisis-title { font-size: 12px; letter-spacing: 0.1em; color: var(--crisis); margin: 0 0 12px; }
+.hotline {
+  display: flex; flex-direction: column; gap: 1px;
+  text-decoration: none; color: var(--crisis); margin-bottom: 16px;
+}
+.hotline .num {
+  font-size: 30px; font-weight: 600; letter-spacing: 0.06em;
+  line-height: 1; font-variant-numeric: tabular-nums;
+}
+.hotline .lbl { font-size: 12px; color: #7c8896; }
+.crisis-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 12px; }
+.solid-btn, .line-btn {
+  font: inherit; font-size: 13.5px; border-radius: 999px;
+  padding: 8px 18px; cursor: pointer; text-decoration: none;
+  transition: opacity 0.18s ease, background 0.18s ease;
+}
+.solid-btn { background: var(--crisis); color: #fff; border: 1px solid var(--crisis); }
+.solid-btn:hover { opacity: 0.88; }
+.line-btn { background: transparent; color: var(--crisis); border: 1px solid #c6d1db; }
+.line-btn:hover { background: #e6ecf1; }
+.plan {
+  margin: 4px 0 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border-radius: 12px;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+.plan ol { margin: 0; padding-left: 1.2em; }
+.plan li { margin-bottom: 6px; }
+.plan li::marker { color: var(--crisis); }
+.crisis-foot { font-size: 12px; color: #8b96a3; margin: 0; }
+
+/* ── 7. 输入区 ───────────────────────────────────────────── */
+.composer {
+  position: sticky;
+  bottom: 0;
+  padding: 18px 0 16px;
+  background: linear-gradient(to bottom,
+    rgba(251, 247, 242, 0) 0%,
+    rgba(251, 247, 242, 0.86) 22%,
+    var(--color-base-100) 52%);
+}
+.box {
+  display: flex; align-items: flex-end; gap: 8px;
+  background: #fff; border: 1px solid var(--line);
+  border-radius: 22px; padding: 8px 8px 8px 18px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.box:focus-within {
+  border-color: #e3c4b4;
+  box-shadow: 0 0 0 4px rgba(192, 118, 92, 0.07);
+}
+body.crisis .box:focus-within {
+  border-color: #c6d1db;
+  box-shadow: 0 0 0 4px rgba(110, 124, 140, 0.08);
+}
+.ta {
+  flex: 1; font: inherit; font-size: 15px; line-height: 1.6;
+  color: var(--ink); background: transparent; border: none; outline: none;
+  resize: none; max-height: 132px; padding: 6px 0;
+}
+.ta::placeholder { color: #b3a89d; }
+
+.send {
+  flex: none; width: 36px; height: 36px; border-radius: 50%;
+  border: none; background: var(--clay); color: #fff;
+  display: grid; place-items: center; cursor: pointer;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+.send svg { width: 17px; height: 17px; }
+.send:hover:not(:disabled) { transform: translateY(-1px); }
+.send:disabled { opacity: 0.35; cursor: default; }
+
+.disclaimer {
+  margin: 9px 0 0; text-align: center; font-size: 11.5px;
+  letter-spacing: 0.04em; color: #b3a89d;
+}
+.disclaimer b { color: var(--muted); font-weight: 500; }
+
+/* ── 8. 移动端 ───────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .shell { padding: 0 16px; }
+  .thread { gap: 22px; padding-top: 18px; }
+  .messages { gap: 22px; }
+  .welcome { padding-top: 18px; }
+  .welcome h1 { font-size: 19px; }
+  .chat-end .chat-bubble { max-width: 86%; }
+  .hotline .num { font-size: 26px; }
+}
+
+/* ── 9. 无障碍：减少动效 ─────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+  .msg.bot.streaming .text::after { content: ""; }
+}

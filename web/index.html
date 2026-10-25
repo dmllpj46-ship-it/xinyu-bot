@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="caramellatte">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light" />
+<title>心屿 · 心理陪练</title>
+<link rel="stylesheet" href="/vendor/daisyui/daisyui-subset.css" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <path d="M4 16c2.2-3.6 5.6-5.4 8-5.4s5.8 1.8 8 5.4"/>
+          <circle cx="12" cy="7.2" r="2.6"/>
+        </svg>
+      </span>
+      <span class="name">心屿</span>
+      <span class="tag">AI 陪练</span>
+    </div>
+    <button class="ghost-btn" id="resetBtn" type="button">新的对话</button>
+  </header>
+
+  <p class="promise">我不是医生，但我会认真听你说。</p>
+
+  <main class="thread" id="thread" aria-live="polite">
+
+    <section class="welcome" id="welcome">
+      <svg class="art" viewBox="0 0 120 60" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+        <circle cx="60" cy="26" r="11"/>
+        <path d="M8 44h104"/>
+        <path d="M26 50h68"/>
+        <path d="M60 15v-5M49 19l-3-4M71 19l3-4"/>
+      </svg>
+      <h1>今天，是什么让你有点累？</h1>
+      <p class="sub">不用组织语言，想到哪说到哪。</p>
+      <div class="chips" id="chips">
+        <button class="chip" type="button">压力大到喘不过气</button>
+        <button class="chip" type="button">躺下也睡不着</button>
+        <button class="chip" type="button">总是心慌、静不下来</button>
+        <button class="chip" type="button">什么都不想做</button>
+      </div>
+    </section>
+
+    <div id="messages" class="messages"></div>
+
+  </main>
+
+  <footer class="composer">
+    <form class="box" id="form">
+      <textarea class="ta textarea" id="input" rows="1"
+                placeholder="说说看，我在听…" maxlength="2000"
+                aria-label="输入你的感受"></textarea>
+      <button class="send" id="send" type="submit" aria-label="发送" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 19V5M5 12l7-7 7 7"/>
+        </svg>
+      </button>
+    </form>
+    <p class="disclaimer">AI 陪练，不替代专业诊疗 · 危机时请拨 <b>12356</b></p>
+  </footer>
+
+</div>
+
+<template id="tpl-bot">
+  <div class="msg bot">
+    <div class="body"><p class="text"></p></div>
+  </div>
+</template>
+
+<template id="tpl-me">
+  <div class="chat chat-end msg me">
+    <div class="chat-bubble"></div>
+  </div>
+</template>
+
+<template id="tpl-crisis">
+  <div class="crisis-card">
+    <p class="crisis-title">现在就可以联系的人</p>
+    <a class="hotline" href="tel:12356">
+      <span class="num">12356</span>
+      <span class="lbl">全国心理援助热线 · 24 小时</span>
+    </a>
+    <div class="crisis-actions">
+      <a class="solid-btn" href="tel:12356">拨打 12356</a>
+      <button class="line-btn" type="button" data-plan>一起做个安全计划</button>
+    </div>
+    <div class="plan" hidden></div>
+    <p class="crisis-foot">如果有即时生命危险，请拨 120，或让身边的人陪着你。</p>
+  </div>
+</template>
+
+<script src="/app.js"></script>
+</body>
+</html>
