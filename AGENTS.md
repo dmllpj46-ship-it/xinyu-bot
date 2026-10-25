@@ -170,8 +170,11 @@ npm run kb                                  # 改了 knowledge/ 或 system.md �
 npm run dev                                 # wrangler dev → http://127.0.0.1:8787
 npm test                                    # vitest，56 例
 npm run typecheck                           # tsc --noEmit
-npm run deploy                              # kb + wrangler deploy
+npm run deploy                              # kb + wrangler deploy → xinyu-bot.poetfangnimagoupi.workers.dev
 ```
+
+线上地址：<https://xinyu-bot.poetfangnimagoupi.workers.dev>。密钥用 `wrangler secret put` 管理，
+**不要**写进 `wrangler.jsonc` 的 `vars`（那个文件是公开的）。
 
 截图（零依赖，不需要 playwright）：
 

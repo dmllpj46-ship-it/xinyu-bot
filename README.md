@@ -2,6 +2,8 @@
 
 > 一个**陪练型**心理健康对话机器人：陪你把压力说清楚，用循证方法给你可执行的一步，需要时把你交到真人手里。
 
+**线上地址：<https://xinyu-bot.poetfangnimagoupi.workers.dev>**（Cloudflare Workers）
+
 不是诊断工具，不是治疗替代品，不是"树洞"。它的定位是 **CBT/ACT 取向的自助陪练 + 危机识别与转介**。
 
 ---
@@ -309,6 +311,10 @@ npm run dev                                    # Worker 版 → http://127.0.0.1
 |---|---|
 | ![chat](docs/ui-worker.png) | ![crisis](docs/ui-worker-crisis.png) |
 
+线上生产环境（`xinyu-bot.poetfangnimagoupi.workers.dev`）的实际截图：
+
+![production](docs/ui-production.png)
+
 本地版同一套界面的截图见 `docs/ui-chat.png`、`docs/ui-crisis.png`。
 含移动端（≤480px）与 `prefers-reduced-motion` 处理。
 
@@ -343,6 +349,10 @@ npm run dev                                    # Worker 版 → http://127.0.0.1
 
 ## 11. 部署到 Cloudflare Workers
 
+> **当前线上地址：<https://xinyu-bot.poetfangnimagoupi.workers.dev>**
+> 部署于 2026-10-25，Version ID `c29b87a7-8579-4e25-a75e-a342763a0e79`，
+> 启动 89 ms，上传 4658 KiB / gzip 823 KiB。
+
 ### 11.1 改造要点（从 FastAPI 迁到 Worker 时踩的坑）
 
 | 原实现 | 问题 | Worker 版做法 |
@@ -362,26 +372,53 @@ npm run dev                                    # Worker 版 → http://127.0.0.1
 # 1) 登录（首次）
 npx wrangler login
 
-# 2) 写入密钥（三个都要，缺一个线上就 500）
+# 2) 写入密钥（两个都要，缺一个线上就 500）
 npx wrangler secret put INCEPTION_API_KEY
 npx wrangler secret put ANYSEARCH_API_KEY
-# INCEPTION_BASE_URL / MERCURY_MODEL 这类非密钥值放 wrangler.jsonc 的 vars 即可
+# INCEPTION_BASE_URL / MERCURY_MODEL 这类非密钥值已写在 wrangler.jsonc 的 vars 里
 
-# 3) 构建 + 部署（deploy 脚本会先跑 kb）
+# 3) 构建 + 部署（predeploy 钩子会先跑 kb）
 npm run deploy
 
 # 4) 验收
-curl https://<你的子域>.workers.dev/api/health
+curl https://xinyu-bot.<你的子域>.workers.dev/api/health
 # 期望：{"ok":true,"model":"mercury-3","runtime":"cloudflare-worker","kbReady":true}
 ```
 
-### 11.3 上线前必须自查的三件事
+密钥用管道写入可以不落文件、不进 shell 历史：
+
+```powershell
+$k = (Select-String -Path .env -Pattern '^INCEPTION_API_KEY=').Line -replace '^[^=]+=', ''
+$k | npx wrangler secret put INCEPTION_API_KEY
+```
+
+### 11.3 上线后实测结果（2026-10-25）
+
+| 检查项 | 结果 |
+|---|---|
+| `/api/health` | `{"ok":true,"model":"mercury-3","runtime":"cloudflare-worker","kbReady":true}` |
+| 首页 `/` | 200，`text/html`，3542 B |
+| 静态资源 | 5 个文件上传成功（`app.js` / `style.css` / `index.html` / daisyUI 子集 / NOTICE） |
+| 危机路径 | `meta(level 2)` → `crisis`（4 热线 + 六步计划）→ 写死话术 → `done{scripted:true, tools:[]}`，**未调模型** |
+| 普通对话 | 模型正常出词，`kb_search` 命中知识库，`guardHits: []` |
+| 多轮上下文 | 回传 `history` 后正确延续（追问「那今晚具体该怎么做」接上了上一轮的入睡困难） |
+| 冷启动 | 89 ms |
+
+> 观察到的两点（不影响可用性）：
+> 1. **`kb_search` 偶尔被调用两次**。查询含多个概念时（如「加班 + 躺下 + 脑子停不下来 + 睡不着」），
+>    Mercury 会先搜一次再换个说法补搜。单概念查询（「一想到上班就胸闷心慌」）只调一次。
+>    属模型的多跳检索行为，不是代码重复。代价是多一次模型往返，约 1–3 秒。
+> 2. **偶发重复开场**。温度 0.75 下三次运行中出现过一次「连着两句同义共情」
+>    （「这种撕扯最磨人」/「这种…最磨人」）。如需消除，可在 `system.md` 的 `<format>` 加一句
+>    「接情绪只说一次，不要用两句话表达同一个意思」——但改 prompt 要按 AGENTS §9 重跑两边验收。
+
+### 11.4 上线前必须自查的三件事
 
 1. **危机路径不依赖模型**。线上用一句 `我不想活了` 试：应立刻返回写死话术 + 热线卡片，且响应里 `scripted: true`。
 2. **`kbReady` 为 true**。为 false 说明 `generated/kb.ts` 没生成或为空——`npm run deploy` 会先跑 `npm run kb`，但手动 `wrangler deploy` 不会。
 3. **响应头与超时**。Workers 免费版单请求 CPU 10ms（付费 30s），SSE 长连接靠的是 I/O 等待而非 CPU，实测正常；但 `waitUntil` 之类的后台任务别用在流式里。
 
-### 11.4 成本与配额（免费档够用）
+### 11.5 成本与配额（免费档够用）
 
 - 请求数 10 万/天、CPU 10ms/请求 —— 本项目的 CPU 消耗主要是 BM25 首次建索引（72 块，毫秒级）与正则扫描，压力不大。
 - 真正的成本在 Mercury 3 的 token，不在 Workers。

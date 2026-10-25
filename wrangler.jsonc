@@ -4,6 +4,17 @@
   "main": "worker/src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+
+  // 非密钥配置。密钥（INCEPTION_API_KEY / ANYSEARCH_API_KEY）一律用
+  // `wrangler secret put` 写入，禁止出现在本文件或提交历史里。
+  "vars": {
+    "INCEPTION_BASE_URL": "https://api.inceptionlabs.ai/v1",
+    "MERCURY_MODEL": "mercury-3",
+    "MERCURY_REASONING_EFFORT": "low",
+    "MERCURY_TEMPERATURE": "0.75",
+    "ANYSEARCH_BASE_URL": "https://api.anysearch.com"
+  },
+
   "assets": {
     "directory": "./web",
     "binding": "ASSETS",
